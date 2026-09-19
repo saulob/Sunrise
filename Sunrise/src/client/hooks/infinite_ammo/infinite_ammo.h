@@ -3,8 +3,8 @@
 namespace sunrise::client::hooks::infinite_ammo {
 
 /**
- * Attaches to the reserve, magazine and sword setters. The magazine amount is observed and can be
- * held at the largest valid amount seen for that weapon while Infinite Magazine is enabled.
+ * Attaches to the reserve, magazine and sword setters. Infinite Magazine temporarily sends a
+ * fixed diagnostic magazine amount while weapons still use the existing setter path.
  * @return True when all three resolved and the detours attached.
  */
 [[nodiscard]] bool install() noexcept;

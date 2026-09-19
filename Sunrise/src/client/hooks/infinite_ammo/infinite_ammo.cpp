@@ -1,8 +1,8 @@
 /**
  * Infinite ammo. The reserve and magazine setters receive replacement counts rather than being
  * written to, so a stored count's encoding stays out of this. Reserves do not clamp, so their
- * number is the number shown. A sword's setter does clamp; Infinite Magazine uses a temporary
- * fixed diagnostic count.
+ * number is the number shown. A sword's setter does clamp; Infinite Magazine uses a fixed count
+ * of 50.
  */
 
 #include "infinite_ammo.h"
@@ -52,7 +52,7 @@ constexpr auto kSword = patterns::signature<patterns::signature_length(kSwordTex
 constexpr std::int32_t kRequestedCount = 500;
 /** Supply asked for on a sword. Its setter clamps this down to the sword's own maximum. */
 constexpr float kRequestedSupply = 9999.0F;
-/** Temporary diagnostic count used by Infinite Magazine. */
+/** Magazine count used by Infinite Magazine. */
 constexpr std::int32_t kRequestedMagazineCount = 50;
 
 using Setter = std::int64_t(__fastcall*)(void*, std::int32_t);
@@ -86,7 +86,7 @@ std::int64_t __fastcall set_reserves(void* weapon, std::int32_t amount) noexcept
 }
 
 /**
- * Uses the temporary diagnostic magazine count when Infinite Magazine is enabled. The reserve
+ * Uses the fixed magazine count when Infinite Magazine is enabled. The reserve
  * setter is still called exactly as before when Infinite Reserves is enabled.
  * @param weapon Weapon instance.
  * @param amount Amount the caller wanted to store.
@@ -102,7 +102,7 @@ std::int64_t __fastcall set_magazine(void* weapon, std::int32_t amount) noexcept
         settings.infiniteMagazineEnabled ? kRequestedMagazineCount : amount;
     const std::int64_t result = next(weapon, requestedAmount);
     const Setter reserves = reinterpret_cast<Setter>(g_handles[kReservesSlot].original);
-    if (enabled() && reserves != nullptr && weapon != nullptr) {
+    if (settings.infiniteAmmoEnabled && reserves != nullptr && weapon != nullptr) {
         (void)reserves(weapon, kRequestedCount);
     }
     return result;
@@ -151,7 +151,7 @@ void __fastcall set_sword_supply(void* weapon, float supply) noexcept {
 
 } // namespace
 
-/** Attaches to all three setters. The magazine one optionally uses the diagnostic test count. */
+/** Attaches to all three setters. The magazine one optionally uses its fixed count. */
 bool install() noexcept {
     if (g_handles[kReservesSlot].original != nullptr) {
         return true;

@@ -53,7 +53,7 @@ constexpr std::int32_t kRequestedCount = 500;
 /** Supply asked for on a sword. Its setter clamps this down to the sword's own maximum. */
 constexpr float kRequestedSupply = 9999.0F;
 /** Temporary diagnostic count used by Infinite Magazine. */
-constexpr std::int32_t kRequestedMagazineCount = 5;
+constexpr std::int32_t kRequestedMagazineCount = 50;
 
 using Setter = std::int64_t(__fastcall*)(void*, std::int32_t);
 using SwordSetter = void(__fastcall*)(void*, float);

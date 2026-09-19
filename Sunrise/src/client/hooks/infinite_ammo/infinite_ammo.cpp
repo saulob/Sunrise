@@ -88,6 +88,30 @@ std::uint64_t g_observationSequence{};
     return client::player::get().infiniteAmmoEnabled;
 }
 
+/** Logs one real ammunition setter event when client debug logging is enabled. */
+void log_ammo_event(const char* setter,
+                    void* weapon,
+                    std::int32_t received,
+                    std::int32_t sent,
+                    bool featureEnabled,
+                    std::int32_t knownCapacity,
+                    std::int64_t result) noexcept {
+    if (!core::log::accepts(core::log::Channel::client, core::log::Level::debug)) {
+        return;
+    }
+    core::log::writef(core::log::Channel::client,
+                      core::log::Level::debug,
+                      "ev=infinite_ammo stage=setter setter=%s weapon=%p received=%d known=%d "
+                      "sent=%d enabled=%d result=%lld",
+                      setter,
+                      weapon,
+                      received,
+                      knownCapacity,
+                      sent,
+                      featureEnabled ? 1 : 0,
+                      static_cast<long long>(result));
+}
+
 /** @return True when the setter argument can be a magazine capacity observation. */
 [[nodiscard]] bool valid_magazine_amount(std::int32_t amount) noexcept {
     return amount > 0;
@@ -150,7 +174,17 @@ std::int64_t __fastcall set_reserves(void* weapon, std::int32_t amount) noexcept
     if (next == nullptr) {
         return 0;
     }
-    return next(weapon, enabled() ? kRequestedCount : amount);
+    const bool reserveEnabled = enabled();
+    const std::int32_t requestedAmount = reserveEnabled ? kRequestedCount : amount;
+    const std::int64_t result = next(weapon, requestedAmount);
+    log_ammo_event("reserves",
+                   weapon,
+                   amount,
+                   requestedAmount,
+                   reserveEnabled,
+                   0,
+                   result);
+    return result;
 }
 
 /**
@@ -167,10 +201,15 @@ std::int64_t __fastcall set_magazine(void* weapon, std::int32_t amount) noexcept
     }
     const client::player::Settings settings = client::player::get();
     const std::int32_t knownCapacity = observe_magazine(weapon, amount);
-    const std::int32_t requestedAmount = settings.infiniteMagazineEnabled
-                                              ? knownCapacity
-                                              : amount;
+    const std::int32_t requestedAmount = settings.infiniteMagazineEnabled ? knownCapacity : amount;
     const std::int64_t result = next(weapon, requestedAmount);
+    log_ammo_event("magazine",
+                   weapon,
+                   amount,
+                   requestedAmount,
+                   settings.infiniteMagazineEnabled,
+                   knownCapacity,
+                   result);
     const Setter reserves = reinterpret_cast<Setter>(g_handles[kReservesSlot].original);
     if (enabled() && reserves != nullptr && weapon != nullptr) {
         (void)reserves(weapon, kRequestedCount);
@@ -188,7 +227,18 @@ void __fastcall set_sword_supply(void* weapon, float supply) noexcept {
     if (next == nullptr) {
         return;
     }
-    next(weapon, enabled() ? kRequestedSupply : supply);
+    const bool ammoEnabled = enabled();
+    next(weapon, ammoEnabled ? kRequestedSupply : supply);
+    if (core::log::accepts(core::log::Channel::client, core::log::Level::debug)) {
+        core::log::writef(core::log::Channel::client,
+                          core::log::Level::debug,
+                          "ev=infinite_ammo stage=setter setter=sword weapon=%p received=%g "
+                          "sent=%g enabled=%d",
+                          weapon,
+                          static_cast<double>(supply),
+                          static_cast<double>(ammoEnabled ? kRequestedSupply : supply),
+                          ammoEnabled ? 1 : 0);
+    }
 }
 
 /**

@@ -1,15 +1,19 @@
 /**
  * Infinite ammo. Three setters hold a weapon's supply, and each is asked for a full one rather than
- * written to, so a stored count's encoding stays out of this. Reserves and magazine do not clamp,
- * so their number is the number shown. A sword's setter does clamp.
+ * written to, so a stored count's encoding stays out of this. Reserves do not clamp, so their
+ * number is the number shown. A sword's setter does clamp; magazines use their largest observed
+ * amount.
  */
 
 #include "infinite_ammo.h"
+
+#include <Windows.h>
 
 #include <array>
 #include <cstddef>
 #include <cstdint>
 #include <cstdio>
+#include <limits>
 #include <string_view>
 
 #include "../../../core/logging/log.h"
@@ -63,9 +67,76 @@ constexpr std::size_t kSwordSlot = 2;
 
 std::array<hooking::detour::Handle, kHandleCount> g_handles{};
 
+/**
+ * The setter exposes the amount being stored, but not a separate magazine-capacity field. Keep a
+ * bounded observation per weapon pointer and use its largest valid amount as that weapon's
+ * capacity. A fixed table avoids retaining an unbounded number of stale game pointers.
+ */
+struct MagazineObservation {
+    void* weapon{};
+    std::int32_t capacity{};
+    std::uint64_t lastSeen{};
+};
+
+constexpr std::size_t kMagazineObservationCount = 8;
+std::array<MagazineObservation, kMagazineObservationCount> g_magazineObservations{};
+SRWLOCK g_magazineObservationLock{SRWLOCK_INIT};
+std::uint64_t g_observationSequence{};
+
 /** @return True while the feature is on. */
 [[nodiscard]] bool enabled() noexcept {
     return client::player::get().infiniteAmmoEnabled;
+}
+
+/** @return True when the setter argument can be a magazine capacity observation. */
+[[nodiscard]] bool valid_magazine_amount(std::int32_t amount) noexcept {
+    return amount > 0;
+}
+
+/**
+ * Remembers the largest positive amount observed for one weapon pointer.
+ * @param weapon Weapon instance supplied by the game.
+ * @param amount Amount the game requested to store.
+ * @return The known capacity, or the original amount when no pointer is available.
+ */
+[[nodiscard]] std::int32_t observe_magazine(void* weapon, std::int32_t amount) noexcept {
+    if (weapon == nullptr || !valid_magazine_amount(amount)) {
+        return amount;
+    }
+
+    AcquireSRWLockExclusive(&g_magazineObservationLock);
+    std::size_t slot = kMagazineObservationCount;
+    std::size_t replacement = 0;
+    std::uint64_t oldest = std::numeric_limits<std::uint64_t>::max();
+    for (std::size_t index = 0; index < g_magazineObservations.size(); ++index) {
+        MagazineObservation& observation = g_magazineObservations[index];
+        if (observation.weapon == weapon) {
+            slot = index;
+            break;
+        }
+        if (observation.weapon == nullptr) {
+            replacement = index;
+            oldest = 0;
+            continue;
+        }
+        if (observation.lastSeen < oldest) {
+            replacement = index;
+            oldest = observation.lastSeen;
+        }
+    }
+    if (slot == kMagazineObservationCount) {
+        slot = replacement;
+        g_magazineObservations[slot] = MagazineObservation{weapon, 0, 0};
+    }
+
+    MagazineObservation& observation = g_magazineObservations[slot];
+    if (amount > observation.capacity) {
+        observation.capacity = amount;
+    }
+    observation.lastSeen = ++g_observationSequence;
+    const std::int32_t capacity = observation.capacity;
+    ReleaseSRWLockExclusive(&g_magazineObservationLock);
+    return capacity;
 }
 
 /**
@@ -83,8 +154,8 @@ std::int64_t __fastcall set_reserves(void* weapon, std::int32_t amount) noexcept
 }
 
 /**
- * Passes the magazine through and tops the reserve up here. The reserve setter only runs on a
- * reload, so a weapon that starts empty never reaches it.
+ * Observes the magazine amount and optionally holds it at the largest value seen for this weapon.
+ * The reserve setter is still called exactly as before when Infinite Reserves is enabled.
  * @param weapon Weapon instance.
  * @param amount Amount the caller wanted to store.
  * @return Whatever the original returns.
@@ -94,7 +165,12 @@ std::int64_t __fastcall set_magazine(void* weapon, std::int32_t amount) noexcept
     if (next == nullptr) {
         return 0;
     }
-    const std::int64_t result = next(weapon, amount);
+    const client::player::Settings settings = client::player::get();
+    const std::int32_t knownCapacity = observe_magazine(weapon, amount);
+    const std::int32_t requestedAmount = settings.infiniteMagazineEnabled
+                                              ? knownCapacity
+                                              : amount;
+    const std::int64_t result = next(weapon, requestedAmount);
     const Setter reserves = reinterpret_cast<Setter>(g_handles[kReservesSlot].original);
     if (enabled() && reserves != nullptr && weapon != nullptr) {
         (void)reserves(weapon, kRequestedCount);
@@ -145,7 +221,7 @@ void __fastcall set_sword_supply(void* weapon, float supply) noexcept {
 
 } // namespace
 
-/** Attaches to all three setters. The magazine one only tops the reserve up. */
+/** Attaches to all three setters. The magazine one also observes and optionally holds its amount. */
 bool install() noexcept {
     if (g_handles[kReservesSlot].original != nullptr) {
         return true;
@@ -187,6 +263,10 @@ void uninstall() noexcept {
     }
     (void)hooking::detour::uninstall(g_handles);
     g_handles = {};
+    AcquireSRWLockExclusive(&g_magazineObservationLock);
+    g_magazineObservations = {};
+    g_observationSequence = 0;
+    ReleaseSRWLockExclusive(&g_magazineObservationLock);
 }
 
 } // namespace sunrise::client::hooks::infinite_ammo

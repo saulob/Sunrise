@@ -26,6 +26,7 @@
 #include "../hooks/inactivity/inactivity_override.h"
 #include "../hooks/infinite_ammo/infinite_ammo.h"
 #include "../hooks/network/runtime.h"
+#include "../hooks/no_damage/no_damage.h"
 #include "../hooks/noclip/runtime.h"
 #include "../hooks/package_trust/package_trust_bypass.h"
 #include "../hooks/polled_input/runtime.h"
@@ -191,6 +192,8 @@ void clear_game_targets() noexcept {
     (void)hooks::noclip::install();
     // Attaches whether or not the feature is on, so the interface can enable it without a restart.
     (void)hooks::infinite_ammo::install();
+    // Same: attached now so the Player control only has to flip the setting.
+    (void)hooks::no_damage::install();
     // Resolves the activity config getter here; the hold itself runs on the frame tick.
     (void)hooks::inactivity::install();
     // Read-only. While the prologue-filler boot task runs, it logs once per second which

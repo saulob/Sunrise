@@ -7,6 +7,8 @@ struct Settings {
     bool infiniteAmmoEnabled{false};
     /** Holds every activity inactivity timeout at its longest. */
     bool antiAfkEnabled{false};
+    /** Drops damage transactions aimed at the local player. */
+    bool noDamageEnabled{false};
 };
 
 /**

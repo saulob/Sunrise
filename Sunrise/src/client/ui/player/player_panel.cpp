@@ -29,6 +29,14 @@ void draw() noexcept {
     ImGui::Spacing();
     changed = toggle::control("Enabled##anti_afk", settings.antiAfkEnabled) || changed;
 
+    ImGui::Spacing();
+    ImGui::Spacing();
+    ImGui::TextUnformatted("No Damage");
+    ImGui::Separator();
+    ImGui::TextWrapped("Prevent combat, fall, Turn Back and out-of-bounds damage.");
+    ImGui::Spacing();
+    changed = toggle::control("Enabled##no_damage", settings.noDamageEnabled) || changed;
+
     if (changed) {
         (void)client::player::publish(settings);
     }

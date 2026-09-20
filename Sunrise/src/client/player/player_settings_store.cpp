@@ -71,6 +71,7 @@ void boolean_for(std::string_view text, std::string_view key, bool& output) noex
 void parse(std::string_view text, Settings& output) noexcept {
     boolean_for(text, "\"infinite_ammo_enabled\"", output.infiniteAmmoEnabled);
     boolean_for(text, "\"anti_afk_enabled\"", output.antiAfkEnabled);
+    boolean_for(text, "\"no_damage_enabled\"", output.noDamageEnabled);
 }
 
 /**
@@ -87,9 +88,11 @@ void parse(std::string_view text, Settings& output) noexcept {
     const int size = std::snprintf(document.data(),
                                    document.size(),
                                    "{\n  \"infinite_ammo_enabled\": %s,\n"
-                                   "  \"anti_afk_enabled\": %s\n}\n",
+                                   "  \"anti_afk_enabled\": %s,\n"
+                                   "  \"no_damage_enabled\": %s\n}\n",
                                    settings.infiniteAmmoEnabled ? "true" : "false",
-                                   settings.antiAfkEnabled ? "true" : "false");
+                                   settings.antiAfkEnabled ? "true" : "false",
+                                   settings.noDamageEnabled ? "true" : "false");
     if (size <= 0 || static_cast<std::size_t>(size) >= document.size()) {
         return false;
     }

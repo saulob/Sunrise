@@ -307,10 +307,15 @@ std::int32_t __fastcall havok_step(std::byte* simulation, float deltaTime) noexc
     std::array<float, kVectorLanes> nativePosition{};
     const bool enabledBeforeStep = poll_toggle();
     const bool flying = fly::enabled();
-    std::byte* const before = (enabledBeforeStep || flying) ? player_body(simulation) : nullptr;
+    // Off while fly is on, so that step is fly's alone. Noclip carries the speed it asks for.
+    const bool speeding = fly::speed_enabled();
+    std::byte* const before =
+        (enabledBeforeStep || flying || speeding) ? player_body(simulation) : nullptr;
     // Fly writes first, so the velocity read below is the one it asked for.
     if (flying) {
         fly::before_step(before);
+    } else if (speeding) {
+        fly::before_speed_step(before);
     }
     const bool hasBody = before != nullptr;
     if (hasBody) {
@@ -329,8 +334,9 @@ std::int32_t __fastcall havok_step(std::byte* simulation, float deltaTime) noexc
     const HavokStep next = reinterpret_cast<HavokStep>(g_stepHandle.original);
     const std::int32_t result = next != nullptr ? next(simulation, deltaTime) : 0;
 
-    // The body is resolved once here for both features.
-    std::byte* const body = (enabledBeforeStep || flying) ? player_body(simulation) : nullptr;
+    // The body is resolved once here for every feature.
+    std::byte* const body =
+        (enabledBeforeStep || flying || speeding) ? player_body(simulation) : nullptr;
     // A character created or replaced during this step has no matching before-state.
     const bool sameBody = hasBody && body == before;
     // Re-read after the step, so a toggle from the interface thread lands before a position write.
@@ -368,6 +374,10 @@ std::int32_t __fastcall havok_step(std::byte* simulation, float deltaTime) noexc
         field<std::array<float, kVectorLanes>>(body, kBodyVelocity) =
             capped_speed(moved, fly::kPublishedSpeedCap);
     }
+    // Movement speed is shown the same cap, on the horizontal lanes it drives.
+    if (speeding && sameBody) {
+        fly::after_speed_step(body);
+    }
     if (!noclipping || !sameBody) {
         return result;
     }
@@ -393,8 +403,9 @@ std::int32_t __fastcall havok_step(std::byte* simulation, float deltaTime) noexc
     field<std::array<float, kVectorLanes>>(body, kBodyPosition) = position;
 
     // Collision may consume velocity before publication. Restore it so the next step still moves.
-    // The vertical lane stays resolved. A rested body already had every lane put back above.
-    if (!rested) {
+    // The vertical lane stays resolved. A rested body already had every lane put back above, and
+    // movement speed writes its lanes again before the next step, so its capped speed stands.
+    if (!rested && !speeding) {
         std::array<float, kVectorLanes> wakeVelocity =
             field<std::array<float, kVectorLanes>>(body, kBodyVelocity);
         wakeVelocity[kHorizontalX] = nativeVelocity[kHorizontalX];

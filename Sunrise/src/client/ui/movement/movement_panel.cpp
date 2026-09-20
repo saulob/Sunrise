@@ -33,6 +33,7 @@ enum class CaptureTarget {
     teleport,
     noclip,
     fly,
+    movementSpeed,
 };
 
 CaptureTarget g_capturing{CaptureTarget::none};
@@ -218,6 +219,44 @@ void draw() noexcept {
                            client::movement::kMaximumFlySpeed,
                            "%.0f units/s")) {
         settings.flySpeed = flySpeed;
+        changed = true;
+    }
+
+    ImGui::Spacing();
+    ImGui::Spacing();
+    ImGui::TextUnformatted("Movement Speed");
+    ImGui::Separator();
+    ImGui::TextWrapped("Move faster using normal movement controls.");
+    ImGui::Spacing();
+
+    changed = core::ui::components::toggle::control("Enabled##movement_speed",
+                                                     settings.movementSpeedEnabled)
+              || changed;
+
+    ImGui::Spacing();
+    ImGui::AlignTextToFramePadding();
+    label::align();
+    ImGui::TextUnformatted("Toggle key");
+    ImGui::SameLine(labelWidth);
+    changed = key_picker("movement_speed_key",
+                         CaptureTarget::movementSpeed,
+                         settings.movementSpeedToggleKey,
+                         controlWidth)
+              || changed;
+
+    ImGui::Spacing();
+    ImGui::AlignTextToFramePadding();
+    label::align();
+    ImGui::TextUnformatted("Speed");
+    ImGui::SameLine(labelWidth);
+    ImGui::SetNextItemWidth(controlWidth);
+    float movementSpeed = settings.movementSpeed;
+    if (ImGui::SliderFloat("##movement_speed",
+                           &movementSpeed,
+                           client::movement::kMinimumMovementSpeed,
+                           client::movement::kMaximumMovementSpeed,
+                           "%.0f units/s")) {
+        settings.movementSpeed = movementSpeed;
         changed = true;
     }
 

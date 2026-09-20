@@ -56,9 +56,10 @@ void observe(void* component) noexcept {
         (void)publish_from(component);
         return;
     }
-    // The ownership test is paid only until the player's component is known. The frame poll drops
-    // a stale one, which is what lets a new destination's component be found.
-    if (known != nullptr || !teleport::owns_local_player(component)) {
+    // A world change can leave the old component readable long enough for the frame poll to keep
+    // it. Replace it as soon as physics presents a different component that is positively proved
+    // to belong to the controlled local player.
+    if (!teleport::owns_local_player(component)) {
         return;
     }
     g_component.store(component, std::memory_order_relaxed);

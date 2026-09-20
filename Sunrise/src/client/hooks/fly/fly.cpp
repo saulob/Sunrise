@@ -3,6 +3,10 @@
  * Velocity is set, not added. Adding compounds each tick and leaves gravity in the vertical lane.
  * Setting it means releasing every key stops the player, which is what holds a hover.
  * The write goes in before the simulation step, and again before the sync that publishes it.
+ * Movement speed reuses the same keys and direction with fly off, adds the controller's left
+ * stick through the move vector the game derives after its controller backends (no device is
+ * polled here), and writes only the horizontal lanes at the configured speed, leaving the
+ * vertical lane to the game. The stick is movement speed's alone; fly flies from the keys.
  */
 
 #include "fly.h"
@@ -14,7 +18,9 @@
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
+#include <cstring>
 #include <optional>
+#include <string_view>
 
 #include "../../../core/logging/log.h"
 #include "../../../core/ui/runtime/ui_visibility_runtime.h"
@@ -22,6 +28,7 @@
 #include "../../../state/runtime/runtime.h"
 #include "../../input/window_focus.h"
 #include "../../movement/movement_settings_store.h"
+#include "../../patterns/image_scan.h"
 #include "../noclip/runtime.h"
 #include "../teleport/runtime.h"
 
@@ -38,6 +45,35 @@ constexpr float kMinimumLengthSquared = 0.000001F;
 /** The horizontal lanes. The basis is X forward, Z up. */
 constexpr std::size_t kLaneX = 0;
 constexpr std::size_t kLaneY = 1;
+
+/**
+ * The stick finalize. It takes the left stick after the game's own deadzone, layout and
+ * inversion, and writes the move vector into the per-player input context. Anchored on its
+ * prologue, the context array it addresses and the player stride it multiplies by.
+ */
+constexpr std::string_view kStickFinalizeText =
+    "48 89 5C 24 10 57 48 83 EC 50 0F 29 74 24 40 48 8B 05 ? ? ? ? 48 33 C4 48 89 44 24 38 "
+    "48 63 C1 48 8D 3D ? ? ? ? 48 69 D8 E0 4C 00 00 48 8D 97 70 19 00 00";
+/** Compiled pattern bytes of the stick finalize signature. */
+constexpr auto kStickFinalize =
+    patterns::signature<patterns::signature_length(kStickFinalizeText)>(kStickFinalizeText);
+/** `lea rdi,[rip+disp32]` of the player input context array: its operand, and the end of it. */
+constexpr std::size_t kContextOperandOffset = 0x24;
+constexpr std::size_t kContextInstructionEnd = 0x28;
+/** One player input context. The `imul` in the signature carries the same stride. */
+constexpr std::size_t kPlayerContextStride = 0x4CE0;
+/** The move vector inside a context: forward, then left. Both already in [-1, 1]. */
+constexpr std::size_t kContextMoveOffset = 0x1980;
+/** The one local player. */
+constexpr std::size_t kLocalPlayer = 0;
+/** Above this squared length a travel vector is brought back to unit length. */
+constexpr float kMaximumLengthSquared = 1.0F;
+
+/** The left stick as the game finalised it: forward and left, each in [-1, 1]. */
+struct StickMove {
+    float forward{};
+    float left{};
+};
 
 /** One movement direction in the player's own frame. */
 enum class Direction : std::size_t {
@@ -81,6 +117,10 @@ float g_heightBeforeStep{0.0F};
 bool g_heightValid{false};
 /** Set while a press owns the vertical lane. The hold stands aside. */
 bool g_steered{false};
+/** The movement speed toggle key on the previous frame, so its switch only flips on the press. */
+std::atomic_bool g_speedToggleDown{false};
+/** The player input context array, or null while the stick has no source. Movement speed only. */
+std::atomic<std::byte*> g_playerContexts{nullptr};
 
 /**
  * Takes the account's movement bindings once they are loaded.
@@ -129,6 +169,27 @@ bool g_steered{false};
 }
 
 /**
+ * Reads the local player's left stick as the game finalised it. The field is image data, so it is
+ * always mapped; a torn read only moves the player for one tick.
+ * @return The stick, or zeroes while it has no source or the field is out of its range.
+ */
+[[nodiscard]] StickMove stick_move() noexcept {
+    std::byte* const contexts = g_playerContexts.load(std::memory_order_acquire);
+    if (contexts == nullptr) {
+        return StickMove{};
+    }
+    StickMove move{};
+    std::memcpy(&move,
+                contexts + kLocalPlayer * kPlayerContextStride + kContextMoveOffset,
+                sizeof move);
+    // The game clamps both lanes to [-1, 1]. Anything else, NaN included, is not a stick.
+    if (!(std::fabs(move.forward) <= 1.0F) || !(std::fabs(move.left) <= 1.0F)) {
+        return StickMove{};
+    }
+    return move;
+}
+
+/**
  * Forward turned about the up axis. This turn is the player's right, confirmed in flight.
  * @return The strafe axis, or zeroes when the camera looks straight up or down.
  */
@@ -145,12 +206,15 @@ bool g_steered{false};
 }
 
 /**
- * Composes the pressed directions into one unit vector.
+ * Composes the pressed directions, and the stick, into one vector of at most unit length.
+ * With a zero stick this is the unit vector of the keys alone, which is what fly asks for.
  * @param pressed One flag per direction.
+ * @param stick The left stick, forward and left. Zeroes for fly.
  * @param forward Camera forward vector.
- * @return The direction to fly, or all zeroes when nothing is pressed.
+ * @return The direction to move, or all zeroes when nothing is pressed.
  */
 [[nodiscard]] teleport::Vector travel(const std::array<bool, kDirectionCount>& pressed,
+                                      const StickMove& stick,
                                       const teleport::Vector& forward) noexcept {
     const teleport::Vector right = right_of(forward);
     teleport::Vector move{};
@@ -171,6 +235,9 @@ bool g_steered{false};
     if (pressed[static_cast<std::size_t>(Direction::left)]) {
         add(right, -1.0F);
     }
+    // The stick's second lane is left, so it turns the other way along the strafe axis.
+    add(forward, stick.forward);
+    add(right, -stick.left);
     if (pressed[static_cast<std::size_t>(Direction::up)]) {
         move[teleport::kVerticalLane] += 1.0F;
     }
@@ -184,7 +251,16 @@ bool g_steered{false};
     if (lengthSquared <= kMinimumLengthSquared) {
         return teleport::Vector{};
     }
-    // Normalised, so a diagonal is not faster than a straight line.
+    // A key is a whole lane, so any press is brought to unit length exactly as before: a diagonal
+    // is not faster than a straight line. The stick alone keeps its length short of full travel,
+    // so the game's analog magnitude carries through, and is only brought back from above it.
+    bool anyKey = false;
+    for (const bool flag : pressed) {
+        anyKey = anyKey || flag;
+    }
+    if (!anyKey && lengthSquared <= kMaximumLengthSquared) {
+        return move;
+    }
     const float length = std::sqrt(lengthSquared);
     for (float& lane : move) {
         lane /= length;
@@ -212,19 +288,40 @@ void cap_speed(teleport::Vector& velocity, float limit) noexcept {
 }
 
 /**
- * Works out the velocity the keys ask for. Also records whether a press owns the vertical lane.
- * @param speed Configured fly speed.
+ * Writes the horizontal lanes of a body's velocity and leaves the vertical lane as it was.
+ * @param body Character rigid body. Live only inside the step or sync hook.
+ * @param velocity Source of the two horizontal lanes.
+ */
+void write_horizontal_velocity(void* body, const teleport::Vector& velocity) noexcept {
+    noclip::Vector stored{};
+    noclip::read_body_velocity(body, stored);
+    stored[kLaneX] = velocity[kLaneX];
+    stored[kLaneY] = velocity[kLaneY];
+    noclip::write_body_velocity(body, stored);
+}
+
+/**
+ * Works out the velocity the keys, and optionally the stick, ask for. Also records whether a press
+ * owns the vertical lane.
+ * @param speed Configured speed.
+ * @param withStick True to add the controller's left stick. Fly passes false and flies from the
+ * keys alone; the stick is movement speed's.
  * @return Velocity in world units per second.
  */
-[[nodiscard]] teleport::Vector desired_velocity(float speed) noexcept {
-    // The interface or another application owns the keyboard. Their presses must not steer.
+[[nodiscard]] teleport::Vector desired_velocity(float speed, bool withStick) noexcept {
+    // The interface or another application owns the input. Its presses must not steer.
     std::array<bool, kDirectionCount> pressed{};
+    StickMove stick{};
     if (!core::ui::runtime::snapshot().visible && input::game_focused()) {
         pressed = pressed_directions();
+        if (withStick) {
+            stick = stick_move();
+        }
     }
     teleport::Vector forward{};
-    const teleport::Vector move =
-        teleport::camera_forward(forward) ? travel(pressed, forward) : teleport::Vector{};
+    const teleport::Vector move = teleport::camera_forward(forward)
+                                      ? travel(pressed, stick, forward)
+                                      : teleport::Vector{};
     g_steered = move[teleport::kVerticalLane] != 0.0F;
     teleport::Vector velocity{};
     for (std::size_t lane = 0; lane < teleport::kVectorLanes; ++lane) {
@@ -233,10 +330,72 @@ void cap_speed(teleport::Vector& velocity, float limit) noexcept {
     return velocity;
 }
 
+/**
+ * Reads the movement speed toggle key once a frame and flips its switch on the press. The same
+ * shape as the fly poll below, kept apart so fly's own path stays as it was.
+ */
+void poll_speed_toggle() noexcept {
+    const client::movement::Settings settings = client::movement::get();
+    if (settings.movementSpeedToggleKey == client::movement::kNoKey) {
+        g_speedToggleDown.store(false, std::memory_order_relaxed);
+        return;
+    }
+    const bool down = input::game_focused()
+                      && (GetAsyncKeyState(static_cast<int>(settings.movementSpeedToggleKey))
+                          & kKeyHeldBit)
+                             != 0;
+    // The interface owns the keyboard, so the key tracks the press but never flips the switch.
+    if (core::ui::runtime::snapshot().visible) {
+        g_speedToggleDown.store(down, std::memory_order_relaxed);
+        return;
+    }
+    if (down && !g_speedToggleDown.exchange(true, std::memory_order_acq_rel)) {
+        client::movement::Settings updated = settings;
+        updated.movementSpeedEnabled = !settings.movementSpeedEnabled;
+        if (!client::movement::publish(updated)) {
+            return;
+        }
+        core::log::write(core::log::Channel::client,
+                         core::log::Level::info,
+                         updated.movementSpeedEnabled ? "ev=movement_speed stage=toggle enabled=1"
+                                                      : "ev=movement_speed stage=toggle enabled=0");
+        return;
+    }
+    if (!down) {
+        g_speedToggleDown.store(false, std::memory_order_release);
+    }
+}
+
 } // namespace
 
-/** Reads the toggle key once a frame and flips the switch on the press. */
+/** Finds the game's processed left-stick move vector. A miss leaves the stick at zero. */
+void resolve_controller() noexcept {
+    std::byte* const finalize =
+        patterns::scan_main_image_unique(kStickFinalize, "movement_speed_stick_finalize");
+    if (finalize == nullptr) {
+        g_playerContexts.store(nullptr, std::memory_order_release);
+        core::log::write(core::log::Channel::client,
+                         core::log::Level::warn,
+                         "ev=movement_speed stage=controller result=fail reason=signature");
+        return;
+    }
+    // The array the finalize addresses, decoded from its own `lea`, like the camera singleton.
+    g_playerContexts.store(patterns::resolve_relative(finalize + kContextOperandOffset,
+                                                      finalize + kContextInstructionEnd),
+                           std::memory_order_release);
+    core::log::write(core::log::Channel::client,
+                     core::log::Level::info,
+                     "ev=movement_speed stage=controller result=ok");
+}
+
+/** Drops the stick source. */
+void clear_controller() noexcept {
+    g_playerContexts.store(nullptr, std::memory_order_release);
+}
+
+/** Reads the toggle keys once a frame and flips each switch on its press. */
 void poll_toggle() noexcept {
+    poll_speed_toggle();
     const client::movement::Settings settings = client::movement::get();
     if (settings.flyToggleKey == client::movement::kNoKey) {
         g_toggleDown.store(false, std::memory_order_relaxed);
@@ -281,7 +440,7 @@ void apply(void* component) noexcept {
     }
     // Capped, because this is the field the game reads to decide the player hit something too
     // hard. The step has the real speed; this is only what the sync publishes.
-    teleport::Vector velocity = desired_velocity(settings.flySpeed);
+    teleport::Vector velocity = desired_velocity(settings.flySpeed, false);
     cap_speed(velocity, kPublishedSpeedCap);
     (void)teleport::write_velocity(component, velocity);
 }
@@ -297,7 +456,7 @@ void before_step(void* body) noexcept {
     if (body == nullptr || !read_bindings()) {
         return;
     }
-    noclip::write_body_velocity(body, desired_velocity(client::movement::get().flySpeed));
+    noclip::write_body_velocity(body, desired_velocity(client::movement::get().flySpeed, false));
     noclip::Vector position{};
     noclip::read_body_position(body, position);
     g_heightBeforeStep = position[teleport::kVerticalLane];
@@ -321,9 +480,60 @@ void after_step(void* body, bool heldElsewhere) noexcept {
     noclip::write_body_velocity(body, velocity);
 }
 
-/** Clears the key state and the held height. The switch is a stored setting and survives. */
+/** Reports whether movement speed drives the horizontal lanes. Fly takes precedence. */
+bool speed_enabled() noexcept {
+    const client::movement::Settings settings = client::movement::get();
+    return settings.movementSpeedEnabled && !settings.flyEnabled;
+}
+
+/** Sets the horizontal velocity the coming simulation step integrates. */
+void before_speed_step(void* body) noexcept {
+    if (body == nullptr || !read_bindings()) {
+        return;
+    }
+    // Set, not scaled: the lanes hold whatever the keys and the stick ask for this step, and
+    // nothing when they ask for nothing, so no speed carries over from one step to the next.
+    write_horizontal_velocity(body,
+                              desired_velocity(client::movement::get().movementSpeed, true));
+}
+
+/** Caps the horizontal speed the game is shown after the step. */
+void after_speed_step(void* body) noexcept {
+    if (body == nullptr) {
+        return;
+    }
+    // The same field and cap as fly, on the two lanes this feature owns. The vertical lane is
+    // the game's, so a fall keeps the speed it had.
+    noclip::Vector stored{};
+    noclip::read_body_velocity(body, stored);
+    teleport::Vector horizontal{stored[kLaneX], stored[kLaneY], 0.0F};
+    cap_speed(horizontal, kPublishedSpeedCap);
+    write_horizontal_velocity(body, horizontal);
+}
+
+/** Writes the capped horizontal velocity on the physics sync, which publishes it. */
+void apply_speed(void* component) noexcept {
+    if (!speed_enabled()) {
+        return;
+    }
+    if (component == nullptr || !teleport::owns_local_player(component)) {
+        return;
+    }
+    void* const body = teleport::body(component);
+    if (body == nullptr || !read_bindings()) {
+        return;
+    }
+    teleport::Vector velocity = desired_velocity(client::movement::get().movementSpeed, true);
+    // Only the horizontal lanes are written, so only they are measured against the cap.
+    velocity[teleport::kVerticalLane] = 0.0F;
+    cap_speed(velocity, kPublishedSpeedCap);
+    write_horizontal_velocity(body, velocity);
+}
+
+/** Clears the key state and the held height. The switches are stored settings and survive. */
 void reset() noexcept {
     g_toggleDown.store(false, std::memory_order_release);
+    g_speedToggleDown.store(false, std::memory_order_release);
     g_heightValid = false;
 }
 

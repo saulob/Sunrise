@@ -8,6 +8,15 @@ namespace sunrise::client::hooks::fly {
  */
 inline constexpr float kPublishedSpeedCap = 8.0F;
 
+/**
+ * Finds the game's processed left-stick move vector, which is read every tick alongside the keys.
+ * A miss is logged and leaves the stick contribution at zero; the keys still fly.
+ */
+void resolve_controller() noexcept;
+
+/** Drops the stick source. The next tick flies from the keys alone. */
+void clear_controller() noexcept;
+
 /** Reads the toggle key once a frame and flips the switch on the press. */
 void poll_toggle() noexcept;
 

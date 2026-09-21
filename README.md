@@ -1,128 +1,201 @@
-# Sunrise
+# SunrisePlus
 
-Destiny 2 Offline Preservation Mod
+Destiny 2 Offline Exploration Mod based on [Sunrise](https://github.com/stanuwu/Sunrise)
 
-> This mod installs onto an old build of the game and allows you to play it offline, loading into
-> destinations, re-create missions and more.
+> SunrisePlus is a personal extension of Sunrise focused on additional gameplay, exploration and quality-of-life features
 >
-> Some gameplay features are not currently supported. (Full Progression, Multiplayer, Lots of Missions ...)
+> It keeps the original Sunrise project as its foundation while providing optional features and customization maintained independently from upstream
 
+- [Original Sunrise Project](https://github.com/stanuwu/Sunrise)
 - [Install Instructions](https://projectsunrise.dev/guides/installing/)
 - [FAQ](https://projectsunrise.dev/faq/)
 - [Documentation](https://projectsunrise.dev/docs/)
 - [Discord](https://discord.gg/22JS6et5k9)
 
-## Features
-- Load into any Destination (matchmade activities are currently broken)
+## SunrisePlus Features
+
+Additional features implemented for SunrisePlus
+
+- [x] Infinite Magazine
+- [x] Configurable Jump Height from 1x to 10x
+- [x] Controller Support for Fly Movement
+- [x] No Damage
+- [x] Configurable Movement Speed
+
+These features are optional and are designed for offline gameplay and exploration
+
+## Original Sunrise Features
+
+SunrisePlus includes the core functionality provided by the original Sunrise project
+
+- Load into any Destination
 - Script Missions
-- Exploration Features (Fly, Noclip, Activity Override, ...)
+- Exploration features including Fly, Noclip and Activity Override
 - Persistent Save
+
+Some features from the original Sunrise project are still under development, including full progression, multiplayer and additional missions
+
+## About SunrisePlus
+
+SunrisePlus is an independent extension of the original Sunrise project
+
+Features developed for SunrisePlus are not necessarily part of the official Sunrise roadmap and may remain exclusive to SunrisePlus
+
+SunrisePlus will continue to follow the original Sunrise project so that future improvements and fixes can be integrated over time
+
+## Future Ideas
+
+Some features being considered or researched for SunrisePlus
+
+- Disable Fall Damage
+- Instant Summon Vehicle / Sparrow
+- Ability Recharge / No Cooldown
+- Damage Modifier
+- Cinematics Library
+- Instant Super
+
+These are ideas rather than commitments and may change as the project evolves
 
 ## WIP
 
-This mod is a work in progress. Things might break or work in unexpected ways. There is also
-currently a lack of documentation. This will improve over the coming weeks.
+SunrisePlus and Sunrise are works in progress
 
-## Support Me
+Things may break or work in unexpected ways while features are being developed and tested
 
-Leave a star on this repo.
+## Original Project
 
-If you want to support my open source work you can find the means on my
-[profile](https://github.com/stanuwu). Also consider donating to charity instead.
+SunrisePlus would not exist without the work of the original Sunrise developers and contributors
 
-All content released under this project is free and open source. If someone is trying to sell you
-something you are getting scammed.
+Original project
+
+https://github.com/stanuwu/Sunrise
+
+Please consider starring and supporting the original Sunrise project
+
+All content released under SunrisePlus remains free and open source
+
+If someone is trying to sell SunrisePlus or its included features, do not purchase it
 
 ## Rules
-Issues are for bug reports only.
 
-PRs are for pull requests only.
+Issues are for bug reports related to SunrisePlus
 
-Do not go and argue/chat there, you can do that on the discord.
+Pull Requests are welcome for fixes, improvements and additional features
+
+Please keep discussions constructive and focused on the project
 
 ## Building
 
 ### Windows
 
-Install Visual Studio 2026 with the **Desktop development with C++** workload. The project builds
-against the v145 toolset and the 10.0.26100 Windows SDK, so check that both are selected in the
-installer.
+Install Visual Studio 2026 with the **Desktop development with C++** workload
 
-The easiest route is to open `Sunrise.sln`, select the `Release` `x64` configuration and build.
+The project builds against the v145 toolset and the 10.0.26100 Windows SDK, so check that both are selected in the installer
 
-To build from a command line, use the Developer PowerShell for VS 2026:
+The easiest route is to open `Sunrise.sln`, select the `Release` `x64` configuration and build
+
+To build from a command line, use the Developer PowerShell for VS 2026
 
 1. Clone the repository
+
 ```powershell
-git clone https://github.com/stanuwu/Sunrise
-cd Sunrise
+git clone https://github.com/saulob/SunrisePlus.git
+cd SunrisePlus
 ```
 
 2. Build the solution
+
 ```powershell
 msbuild Sunrise.sln /m /p:Configuration=Release /p:Platform=x64
 ```
 
 ### Linux
 
-Make sure you have `git`, `cmake`, `clang`, `ninja`, `llvm`, and `xwin` installed.
+Make sure you have `git`, `cmake`, `clang`, `ninja`, `llvm` and `xwin` installed
 
 1. Clone the repository
+
 ```bash
-$ git clone https://github.com/stanuwu/Sunrise
-$ cd Sunrise
+git clone https://github.com/saulob/SunrisePlus.git
+cd SunrisePlus
 ```
 
-2. Download Windows headers:
+2. Download Windows headers
+
 ```bash
-$ xwin --sdk-version 10.0.26100 --accept-license splat --include-debug-libs --output .xwin-cache
+xwin --sdk-version 10.0.26100 --accept-license splat --include-debug-libs --output .xwin-cache
 ```
 
 3. Configure and build the project
+
 ```bash
-$ cmake -B build -G Ninja -DCMAKE_TOOLCHAIN_FILE=$(pwd)/linux-to-win-toolchain.cmake -DCMAKE_BUILD_TYPE=Release
-$ cmake --build build
+cmake -B build -G Ninja -DCMAKE_TOOLCHAIN_FILE=$(pwd)/linux-to-win-toolchain.cmake -DCMAKE_BUILD_TYPE=Release
+cmake --build build
 ```
+
+## Keeping SunrisePlus Updated
+
+The original Sunrise repository should be configured as the upstream remote
+
+```powershell
+git remote add upstream https://github.com/stanuwu/Sunrise.git
+```
+
+Updates from Sunrise can then be integrated with
+
+```powershell
+git fetch upstream
+git checkout master
+git merge upstream/master
+```
+
+SunrisePlus-specific features are maintained on top of the upstream project
 
 ## Contributing
 
-Pull Requests are welcome. Please follow these rules:
+Pull Requests are welcome
 
-- **No Copyrighted Data** - All game data should be extracted at runtime.
-- **Code Formatting** - Stick to the provided clang-format and clang-tidy configs.
-- **Clean Code** - Try to post readable high-quality code, follow the project's existing style of
-  comment and add docs.
-- **Provide Documentation** - Please explain what you changed, why you changed it and the effects it
-  has in detail, it saves me a lot of work.
-- **Follow Up** - If something with the PR is not right, I will reply and ask you to fix it.
-- **One Feature** - Do not put multiple features into one PR.
-- **Complete Implementations** - Do not PR features that are not completed and/or have non-functional parts.
-- **Server Focus** - For features that are intended to be part of the server, don't abuse client patches. Sometimes it's needed but mostly everything should go through the right requests and pushes.
+Please follow these guidelines
 
-## Team
+- **No Copyrighted Data** - All game data should be extracted at runtime
+- **Code Formatting** - Follow the provided clang-format and clang-tidy configurations
+- **Clean Code** - Keep changes readable and consistent with the existing project
+- **Provide Documentation** - Explain what changed, why it changed and its effects
+- **One Feature** - Keep unrelated features in separate Pull Requests
+- **Complete Implementations** - Avoid submitting incomplete or non-functional features
+- **Offline Focus** - SunrisePlus is intended for the supported offline game build and not live Destiny 2 servers
 
-- [stan](https://github.com/stanuwu) - Creator and lead developer. Works on core development
-  and the mission script SDK and API.
-- [techno](https://github.com/Techno453) - Works on p2p multiplayer.
-- [gage](https://github.com/gagefulwood) - Works on investment and progression.
-- All Sunrise open source contributors.
+## SunrisePlus Maintainer
+
+- [Saulo Benigno](https://github.com/saulob) - SunrisePlus maintainer and additional feature development
+
+## Original Sunrise Team
+
+- [stan](https://github.com/stanuwu) - Creator and lead developer of Sunrise
+- [techno](https://github.com/Techno453) - P2P multiplayer
+- [gage](https://github.com/gagefulwood) - Investment and progression
+- All Sunrise open source contributors
 
 ## Credits
 
-### All Contributors
+### Original Project
 
-### Dependencies:
+SunrisePlus is based on [Sunrise](https://github.com/stanuwu/Sunrise)
+
+Original architecture, research and core implementation belong to the Sunrise project and its contributors
+
+### Dependencies
 
 - [ImGui](https://github.com/ocornut/imgui)
 - [Detours](https://github.com/microsoft/detours)
 - [Lua](https://lua.org/)
 - [SQLite](https://www.sqlite.org/)
 
-### Artwork:
+### Artwork
 
 - [Solus](https://www.youtube.com/@Solus-yt)
 
-### Testing:
+### Original Sunrise Testing Credits
 
 - [Ferr](https://x.com/light_fades_awy)
 - [gage](https://x.com/_Quolu_)
@@ -137,7 +210,7 @@ Pull Requests are welcome. Please follow these rules:
 - Z
 - The Cube17
 
-### Inspiration/Helpful Repos
+### Inspiration and Helpful Repositories
 
 - https://github.com/v4nguard/tiger-pkg
 - https://github.com/cohaereo/alkahest
@@ -160,40 +233,38 @@ Pull Requests are welcome. Please follow these rules:
 - https://github.com/MontagueM/DestinyUnpacker
 - https://github.com/nblockbuster/bungie-lua-decompiler
 
-### Other:
+### Other
 
-- [Ginsor](https://x.com/GinsorKR) - Gave me some useful pointers
-
-> Want to be added to or removed from the credits? Let me know.
+- [Ginsor](https://x.com/GinsorKR) - Provided useful pointers to the original Sunrise project
 
 ## Content Disclaimer
 
-Sunrise is not:
+SunrisePlus installs onto an old supported build of Destiny 2 and runs completely locally
 
-- A Crack
-- A Cheat
-- A Custom Server
+SunrisePlus does not connect to live Destiny 2 servers and is not intended for use with current or online versions of the game
 
-Everyone needs to provide their own copy of the game, no piracy is happening. The mod does not
-connect to any servers, it runs completely locally. We do not offer any servers or services.
+Everyone must provide their own copy of the game
+
+No game copy, copyrighted game data, online service or server is provided by this repository
 
 ## Legal Disclaimer
 
-This project is not for profit. It does not affect live servers or newer versions of the game where
-research like this could pose a security risk. No game data will be included in the release so this
-is not a copyright violation. This is also not a circumvention of protective measures. Please do not
-file any DMCA or other copyright claims against this. Legal action will be taken for abuse of the
-copyright system to censor this work.
+This project is not for profit
+
+It does not affect live servers or newer versions of the game where research like this could pose a security risk
+
+No copyrighted game data is included in the repository or releases
+
+SunrisePlus is an independent open source extension of Sunrise
 
 ## AI Disclaimer
 
-AI was used in the creation of this project. If you are not comfortable with the use of AI in
-programming projects beware.
+AI may be used for research, development, code review and documentation
 
-AI was NOT used to create any art or creative writing. Only for RE, development and documentation
-purposes. All AI work that is publicly released is reviewed by a human. AI is a tool and the user is
-responsible for the results it produces.
+All publicly released changes are reviewed by a human before being merged
+
+AI is treated as a development tool and the developer remains responsible for the resulting code
 
 ## Affiliation Disclaimer
 
-This project is not affiliated with Bungie or Sony in any way.
+SunrisePlus is not affiliated with Bungie or Sony in any way

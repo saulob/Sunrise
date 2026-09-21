@@ -16,9 +16,13 @@ void draw() noexcept {
 
     ImGui::TextUnformatted("Infinite Ammo");
     ImGui::Separator();
-    ImGui::TextWrapped("Keep every weapon's reserves full.");
+    ImGui::TextWrapped("Keep weapon ammunition full.");
     ImGui::Spacing();
-    bool changed = toggle::control("Enabled##infinite_ammo", settings.infiniteAmmoEnabled);
+    bool changed =
+        toggle::control("Infinite Reserves##infinite_ammo", settings.infiniteAmmoEnabled);
+    changed = toggle::control("Infinite Magazine##infinite_magazine",
+                              settings.infiniteMagazineEnabled)
+              || changed;
 
     ImGui::Spacing();
     ImGui::Spacing();
@@ -28,6 +32,14 @@ void draw() noexcept {
                        "screen.");
     ImGui::Spacing();
     changed = toggle::control("Enabled##anti_afk", settings.antiAfkEnabled) || changed;
+
+    ImGui::Spacing();
+    ImGui::Spacing();
+    ImGui::TextUnformatted("No Damage");
+    ImGui::Separator();
+    ImGui::TextWrapped("Prevent combat, fall, Turn Back and out-of-bounds damage.");
+    ImGui::Spacing();
+    changed = toggle::control("Enabled##no_damage", settings.noDamageEnabled) || changed;
 
     if (changed) {
         (void)client::player::publish(settings);

@@ -9,13 +9,13 @@ namespace sunrise::client::hooks::fly {
 inline constexpr float kPublishedSpeedCap = 8.0F;
 
 /**
- * Finds the game's processed left-stick move vector for movement speed, which reads it every
- * tick alongside the keys. A miss is logged and leaves the stick contribution at zero. Fly never
- * reads it: fly flies from the keys alone.
+ * Finds the game's processed left-stick move vector, which is read every tick alongside the keys.
+ * A miss is logged and leaves the stick contribution at zero. Movement speed uses the stick;
+ * fly continues to fly from the keys alone.
  */
 void resolve_controller() noexcept;
 
-/** Drops the stick source. Movement speed then moves from the keys alone. */
+/** Drops the stick source. The next tick uses the keys alone. */
 void clear_controller() noexcept;
 
 /** Reads the fly and movement speed toggle keys once a frame and flips each switch on its press. */

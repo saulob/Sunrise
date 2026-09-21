@@ -179,8 +179,8 @@ bool install() noexcept {
     if (!resolve_action_keys()) {
         (void)fail("action_keys");
     }
-    // Movement speed reads the stick on the ticks these hooks carry. Without it, it still moves
-    // from the keys. Fly never reads it.
+    // Movement speed reads the stick on the ticks these hooks carry. Without it, movement still
+    // works from the keys, and fly continues to fly from the keys alone.
     hooks::fly::resolve_controller();
     g_installed.store(true, std::memory_order_release);
     core::log::write(

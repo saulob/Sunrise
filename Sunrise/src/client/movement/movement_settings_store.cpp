@@ -10,6 +10,7 @@
 
 #include <algorithm>
 #include <array>
+#include <cmath>
 #include <cstddef>
 #include <cstdio>
 #include <cstdlib>
@@ -44,7 +45,25 @@ bool g_pathResolved{};
            && settings.flySpeed <= kMaximumFlySpeed
            && settings.movementSpeedToggleKey <= kMaximumVirtualKey
            && settings.movementSpeed >= kMinimumMovementSpeed
-           && settings.movementSpeed <= kMaximumMovementSpeed;
+           && settings.movementSpeed <= kMaximumMovementSpeed
+           && std::isfinite(settings.jumpHeightMultiplier)
+           && settings.jumpHeightMultiplier >= kMinimumJumpHeightMultiplier
+           && settings.jumpHeightMultiplier <= kMaximumJumpHeightMultiplier;
+}
+
+/** Clamps a persisted multiplier, falling back when a non-finite scalar was saved. */
+[[nodiscard]] float
+multiplier(float value, float minimum, float maximum, float fallback) noexcept {
+    return std::isfinite(value) ? std::round(std::clamp(value, minimum, maximum)) : fallback;
+}
+
+/** Normalizes an in-range multiplier before publishing it from the UI or another caller. */
+void normalize_multipliers(Settings& settings) noexcept {
+    if (std::isfinite(settings.jumpHeightMultiplier)
+        && settings.jumpHeightMultiplier >= kMinimumJumpHeightMultiplier
+        && settings.jumpHeightMultiplier <= kMaximumJumpHeightMultiplier) {
+        settings.jumpHeightMultiplier = std::round(settings.jumpHeightMultiplier);
+    }
 }
 
 /** @param reason Key naming the step that failed. */
@@ -159,6 +178,15 @@ void parse(std::string_view text, Settings& output) noexcept {
         output.movementSpeed = std::clamp(
             std::strtof(buffer.data(), nullptr), kMinimumMovementSpeed, kMaximumMovementSpeed);
     }
+    if (scalar_for(text, "\"jump_height_enabled\"", scalar)) {
+        output.jumpHeightEnabled = scalar.starts_with("true");
+    }
+    if (scalar_for(text, "\"jump_height_multiplier\"", scalar) && terminated(scalar, buffer)) {
+        output.jumpHeightMultiplier = multiplier(std::strtof(buffer.data(), nullptr),
+                                                 kMinimumJumpHeightMultiplier,
+                                                 kMaximumJumpHeightMultiplier,
+                                                 kDefaultJumpHeightMultiplier);
+    }
 }
 
 /**
@@ -182,9 +210,11 @@ void parse(std::string_view text, Settings& output) noexcept {
                                    "  \"fly_enabled\": %s,\n"
                                    "  \"fly_toggle_key\": %u,\n"
                                    "  \"fly_speed\": %.3f,\n"
-                                   "  \"movement_speed_enabled\": %s,\n"
-                                   "  \"movement_speed_toggle_key\": %u,\n"
-                                   "  \"movement_speed\": %.3f\n}\n",
+    "  \"movement_speed_enabled\": %s,\n"
+    "  \"movement_speed_toggle_key\": %u,\n"
+                                   "  \"movement_speed\": %.3f,\n"
+    "  \"jump_height_enabled\": %s,\n"
+    "  \"jump_height_multiplier\": %.3f\n}\n",
                                    settings.enabled ? "true" : "false",
                                    static_cast<double>(settings.distance),
                                    static_cast<unsigned>(settings.virtualKey),
@@ -196,7 +226,9 @@ void parse(std::string_view text, Settings& output) noexcept {
                                    static_cast<double>(settings.flySpeed),
                                    settings.movementSpeedEnabled ? "true" : "false",
                                    static_cast<unsigned>(settings.movementSpeedToggleKey),
-                                   static_cast<double>(settings.movementSpeed));
+                                   static_cast<double>(settings.movementSpeed),
+                                   settings.jumpHeightEnabled ? "true" : "false",
+                                   static_cast<double>(settings.jumpHeightMultiplier));
     if (size <= 0) {
         return false;
     }
@@ -283,12 +315,14 @@ Settings get() noexcept {
 
 /** Publishes one configuration and writes it straight to disk. */
 bool publish(const Settings& settings) noexcept {
-    if (!valid(settings)) {
+    Settings normalized = settings;
+    normalize_multipliers(normalized);
+    if (!valid(normalized)) {
         return false;
     }
     AcquireSRWLockExclusive(&g_lock);
-    g_settings = settings;
-    const bool stored = store(settings);
+    g_settings = normalized;
+    const bool stored = store(normalized);
     ReleaseSRWLockExclusive(&g_lock);
     if (!stored) {
         report_fail("write");

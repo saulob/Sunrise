@@ -119,7 +119,7 @@ bool g_heightValid{false};
 bool g_steered{false};
 /** The movement speed toggle key on the previous frame, so its switch only flips on the press. */
 std::atomic_bool g_speedToggleDown{false};
-/** The player input context array, or null while the stick has no source. Movement speed only. */
+/** The player input context array, or null while the stick has no source. */
 std::atomic<std::byte*> g_playerContexts{nullptr};
 
 /**
@@ -206,10 +206,10 @@ std::atomic<std::byte*> g_playerContexts{nullptr};
 }
 
 /**
- * Composes the pressed directions, and the stick, into one vector of at most unit length.
- * With a zero stick this is the unit vector of the keys alone, which is what fly asks for.
+ * Composes the pressed directions and, when requested, the stick into one vector of at most unit
+ * length. With a zero stick this is the unit vector of the keys alone, which is what fly asks for.
  * @param pressed One flag per direction.
- * @param stick The left stick, forward and left. Zeroes for fly.
+ * @param stick The left stick, forward and left.
  * @param forward Camera forward vector.
  * @return The direction to move, or all zeroes when nothing is pressed.
  */
@@ -301,8 +301,8 @@ void write_horizontal_velocity(void* body, const teleport::Vector& velocity) noe
 }
 
 /**
- * Works out the velocity the keys, and optionally the stick, ask for. Also records whether a press
- * owns the vertical lane.
+ * Works out the velocity the keys and, optionally, the stick ask for. Also records whether a
+ * press owns the vertical lane.
  * @param speed Configured speed.
  * @param withStick True to add the controller's left stick. Fly passes false and flies from the
  * keys alone; the stick is movement speed's.
@@ -371,21 +371,20 @@ void poll_speed_toggle() noexcept {
 /** Finds the game's processed left-stick move vector. A miss leaves the stick at zero. */
 void resolve_controller() noexcept {
     std::byte* const finalize =
-        patterns::scan_main_image_unique(kStickFinalize, "movement_speed_stick_finalize");
+        patterns::scan_main_image_unique(kStickFinalize, "movement_stick_finalize");
     if (finalize == nullptr) {
         g_playerContexts.store(nullptr, std::memory_order_release);
         core::log::write(core::log::Channel::client,
                          core::log::Level::warn,
-                         "ev=movement_speed stage=controller result=fail reason=signature");
+                         "ev=movement stage=controller result=fail reason=signature");
         return;
     }
     // The array the finalize addresses, decoded from its own `lea`, like the camera singleton.
     g_playerContexts.store(patterns::resolve_relative(finalize + kContextOperandOffset,
                                                       finalize + kContextInstructionEnd),
                            std::memory_order_release);
-    core::log::write(core::log::Channel::client,
-                     core::log::Level::info,
-                     "ev=movement_speed stage=controller result=ok");
+    core::log::write(
+        core::log::Channel::client, core::log::Level::info, "ev=movement stage=controller result=ok");
 }
 
 /** Drops the stick source. */
@@ -393,7 +392,7 @@ void clear_controller() noexcept {
     g_playerContexts.store(nullptr, std::memory_order_release);
 }
 
-/** Reads the toggle keys once a frame and flips each switch on its press. */
+/** Reads the fly and movement speed toggle keys once a frame and flips each switch on its press. */
 void poll_toggle() noexcept {
     poll_speed_toggle();
     const client::movement::Settings settings = client::movement::get();

@@ -24,20 +24,6 @@ Additional features implemented for SunrisePlus
 
 These features are optional and are designed for offline gameplay and exploration
 
-## Roadmap
-
-Features currently planned or being researched for SunrisePlus
-
-- [ ] Disable Fall Damage
-- [ ] Instant Summon Vehicle / Sparrow
-- [ ] Campaign / Progression Utilities
-- [ ] Ability Recharge / No Cooldown
-- [ ] Damage Modifier
-- [ ] Cinematics Library
-- [ ] Instant Super
-
-The roadmap may change as features are researched and tested
-
 ## Upstream Sunrise Features
 
 SunrisePlus includes the functionality provided by the upstream Sunrise project
@@ -56,6 +42,19 @@ SunrisePlus is maintained independently from upstream Sunrise
 Features developed here are not necessarily part of the official Sunrise roadmap and may remain exclusive to SunrisePlus
 
 The project will continue to track upstream Sunrise so that improvements and fixes from the original project can be integrated over time
+
+## Future Ideas
+
+Some features being considered or researched for SunrisePlus
+
+- Disable Fall Damage
+- Instant Summon Vehicle / Sparrow
+- Ability Recharge / No Cooldown
+- Damage Modifier
+- Cinematics Library
+- Instant Super
+
+These are ideas rather than commitments and may change as the project evolves
 
 ## WIP
 

@@ -45,11 +45,9 @@ Some features from the original Sunrise project are still under development, inc
 
 ## About SunrisePlus
 
-SunrisePlus is an independent extension of the original Sunrise project
+SunrisePlus is my personal extended fork of Sunrise, focused on gameplay options, quality-of-life improvements and experimentation with the preserved Destiny 2 build
 
-Features developed for SunrisePlus are not necessarily part of the official Sunrise roadmap and may remain exclusive to SunrisePlus
-
-SunrisePlus will continue to follow the original Sunrise project so that future improvements and fixes can be integrated over time
+It builds on the excellent preservation work of the original Sunrise project while allowing me to continue developing and testing features independently
 
 ## Future Ideas
 

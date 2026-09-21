@@ -7,7 +7,9 @@
 
 #include <Windows.h>
 
+#include <algorithm>
 #include <array>
+#include <cmath>
 #include <cstdio>
 #include <imgui.h>
 
@@ -231,6 +233,43 @@ void draw() noexcept {
     changed =
         core::ui::components::toggle::control("Enabled##sword_skate", settings.swordSkateEnabled)
         || changed;
+
+    ImGui::Spacing();
+    ImGui::Spacing();
+    ImGui::TextUnformatted("Jump Height");
+    ImGui::Separator();
+    ImGui::TextWrapped("Increase player jump height");
+    ImGui::Spacing();
+
+    changed = core::ui::components::toggle::control("Enabled##jump_height",
+                                                     settings.jumpHeightEnabled)
+              || changed;
+
+    ImGui::Spacing();
+    ImGui::AlignTextToFramePadding();
+    label::align();
+    ImGui::TextUnformatted("Multiplier");
+    ImGui::SameLine(labelWidth);
+    ImGui::SetNextItemWidth(controlWidth);
+    const int jumpHeightMinimum =
+        static_cast<int>(client::movement::kMinimumJumpHeightMultiplier);
+    const int jumpHeightMaximum =
+        static_cast<int>(client::movement::kMaximumJumpHeightMultiplier);
+    int jumpHeightMultiplier = static_cast<int>(std::round(
+        std::clamp(settings.jumpHeightMultiplier,
+                   client::movement::kMinimumJumpHeightMultiplier,
+                   client::movement::kMaximumJumpHeightMultiplier)));
+    if (ImGui::SliderInt("##jump_height_multiplier",
+                         &jumpHeightMultiplier,
+                         jumpHeightMinimum,
+                         jumpHeightMaximum,
+                         "%dx")) {
+        settings.jumpHeightMultiplier = static_cast<float>(jumpHeightMultiplier);
+        changed = true;
+    } else if (settings.jumpHeightMultiplier != static_cast<float>(jumpHeightMultiplier)) {
+        settings.jumpHeightMultiplier = static_cast<float>(jumpHeightMultiplier);
+        changed = true;
+    }
 
     if (changed && !client::movement::publish(settings)) {
         ImGui::Spacing();

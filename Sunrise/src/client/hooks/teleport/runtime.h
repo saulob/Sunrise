@@ -94,6 +94,16 @@ void apply_pending(void* component) noexcept;
 [[nodiscard]] bool owns_local_player(void* component) noexcept;
 
 /**
+ * Writes the object handle the local player controls.
+ * @param handle Receives the whole handle, generation bits included.
+ * @return True when the getter is published and the player controls an object.
+ *
+ * Exposed for a feature that meets the player through another object's owner handle rather
+ * than through a physics component.
+ */
+[[nodiscard]] bool controlled_handle(std::uint32_t& handle) noexcept;
+
+/**
  * Reads the world position of the body a physics component drives.
  * @param component Physics component.
  * @param position Receives the three lanes.

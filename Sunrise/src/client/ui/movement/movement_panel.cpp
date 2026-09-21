@@ -7,7 +7,9 @@
 
 #include <Windows.h>
 
+#include <algorithm>
 #include <array>
+#include <cmath>
 #include <cstdio>
 #include <imgui.h>
 
@@ -33,6 +35,7 @@ enum class CaptureTarget {
     teleport,
     noclip,
     fly,
+    movementSpeed,
 };
 
 CaptureTarget g_capturing{CaptureTarget::none};
@@ -223,6 +226,44 @@ void draw() noexcept {
 
     ImGui::Spacing();
     ImGui::Spacing();
+    ImGui::TextUnformatted("Movement Speed");
+    ImGui::Separator();
+    ImGui::TextWrapped("Move faster using normal movement controls.");
+    ImGui::Spacing();
+
+    changed = core::ui::components::toggle::control("Enabled##movement_speed",
+                                                     settings.movementSpeedEnabled)
+              || changed;
+
+    ImGui::Spacing();
+    ImGui::AlignTextToFramePadding();
+    label::align();
+    ImGui::TextUnformatted("Toggle key");
+    ImGui::SameLine(labelWidth);
+    changed = key_picker("movement_speed_key",
+                         CaptureTarget::movementSpeed,
+                         settings.movementSpeedToggleKey,
+                         controlWidth)
+              || changed;
+
+    ImGui::Spacing();
+    ImGui::AlignTextToFramePadding();
+    label::align();
+    ImGui::TextUnformatted("Speed");
+    ImGui::SameLine(labelWidth);
+    ImGui::SetNextItemWidth(controlWidth);
+    float movementSpeed = settings.movementSpeed;
+    if (ImGui::SliderFloat("##movement_speed",
+                           &movementSpeed,
+                           client::movement::kMinimumMovementSpeed,
+                           client::movement::kMaximumMovementSpeed,
+                           "%.0f units/s")) {
+        settings.movementSpeed = movementSpeed;
+        changed = true;
+    }
+
+    ImGui::Spacing();
+    ImGui::Spacing();
     ImGui::TextUnformatted("Sword Skate Fix");
     ImGui::Separator();
     ImGui::TextWrapped("Disable sword swings blocking ability usage.");
@@ -231,6 +272,43 @@ void draw() noexcept {
     changed =
         core::ui::components::toggle::control("Enabled##sword_skate", settings.swordSkateEnabled)
         || changed;
+
+    ImGui::Spacing();
+    ImGui::Spacing();
+    ImGui::TextUnformatted("Jump Height");
+    ImGui::Separator();
+    ImGui::TextWrapped("Increase player jump height");
+    ImGui::Spacing();
+
+    changed = core::ui::components::toggle::control("Enabled##jump_height",
+                                                     settings.jumpHeightEnabled)
+              || changed;
+
+    ImGui::Spacing();
+    ImGui::AlignTextToFramePadding();
+    label::align();
+    ImGui::TextUnformatted("Multiplier");
+    ImGui::SameLine(labelWidth);
+    ImGui::SetNextItemWidth(controlWidth);
+    const int jumpHeightMinimum =
+        static_cast<int>(client::movement::kMinimumJumpHeightMultiplier);
+    const int jumpHeightMaximum =
+        static_cast<int>(client::movement::kMaximumJumpHeightMultiplier);
+    int jumpHeightMultiplier = static_cast<int>(std::round(
+        std::clamp(settings.jumpHeightMultiplier,
+                   client::movement::kMinimumJumpHeightMultiplier,
+                   client::movement::kMaximumJumpHeightMultiplier)));
+    if (ImGui::SliderInt("##jump_height_multiplier",
+                         &jumpHeightMultiplier,
+                         jumpHeightMinimum,
+                         jumpHeightMaximum,
+                         "%dx")) {
+        settings.jumpHeightMultiplier = static_cast<float>(jumpHeightMultiplier);
+        changed = true;
+    } else if (settings.jumpHeightMultiplier != static_cast<float>(jumpHeightMultiplier)) {
+        settings.jumpHeightMultiplier = static_cast<float>(jumpHeightMultiplier);
+        changed = true;
+    }
 
     if (changed && !client::movement::publish(settings)) {
         ImGui::Spacing();

@@ -62,7 +62,7 @@ SunrisePlus and Sunrise are works in progress
 
 Things may break or work in unexpected ways while features are being developed and tested
 
-## Upstream Project
+## Original Project
 
 SunrisePlus would not exist without the work of the original Sunrise developers and contributors
 

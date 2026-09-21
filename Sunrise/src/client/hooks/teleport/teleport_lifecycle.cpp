@@ -102,6 +102,7 @@ std::int64_t __fastcall physics_sync(std::byte* component, std::byte* outFlags) 
     // is written and read inside this tick, so it has to run here and not on a frame poll.
     hooks::sword_skate::apply(component);
     hooks::fly::apply(component);
+    hooks::fly::apply_speed(component);
     // This tick is the only one that sees every component, so it is where the player's is found.
     client::player::position::observe(component);
     const PhysicsSync next = original<PhysicsSync>(kPhysicsSlot);
@@ -178,7 +179,8 @@ bool install() noexcept {
     if (!resolve_action_keys()) {
         (void)fail("action_keys");
     }
-    // Fly reads the stick on the ticks these hooks carry. Without it fly still flies from the keys.
+    // Movement speed reads the stick on the ticks these hooks carry. Without it, movement still
+    // works from the keys, and fly continues to fly from the keys alone.
     hooks::fly::resolve_controller();
     g_installed.store(true, std::memory_order_release);
     core::log::write(

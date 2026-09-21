@@ -20,6 +20,12 @@ inline constexpr float kMinimumFlySpeed = 1.0F;
 /** Fastest offered fly speed. Past this the player outruns what the map streams in. */
 inline constexpr float kMaximumFlySpeed = 100.0F;
 
+/** Default movement speed, in world units per second. Matches the fly default. */
+inline constexpr float kDefaultMovementSpeed = 15.0F;
+/** Slowest offered movement speed. */
+inline constexpr float kMinimumMovementSpeed = 1.0F;
+/** Fastest offered movement speed. The same ceiling as fly, for the same streaming reason. */
+inline constexpr float kMaximumMovementSpeed = 100.0F;
 /** Default multiplier for the initial jump impulse. */
 inline constexpr float kDefaultJumpHeightMultiplier = 1.0F;
 /** Smallest jump height multiplier offered by the interface. */
@@ -40,6 +46,11 @@ struct Settings {
     std::uint32_t flyToggleKey{kNoKey};
     /** World units per second while a direction is pressed. */
     float flySpeed{kDefaultFlySpeed};
+    /** Ground movement at a set horizontal speed. Fly takes precedence; noclip carries it. */
+    bool movementSpeedEnabled{false};
+    std::uint32_t movementSpeedToggleKey{kNoKey};
+    /** World units per second along the ground while a direction is pressed. */
+    float movementSpeed{kDefaultMovementSpeed};
     bool jumpHeightEnabled{false};
     float jumpHeightMultiplier{kDefaultJumpHeightMultiplier};
 };

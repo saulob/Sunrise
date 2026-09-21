@@ -43,6 +43,9 @@ bool g_pathResolved{};
            && settings.noclipToggleKey <= kMaximumVirtualKey
            && settings.flyToggleKey <= kMaximumVirtualKey && settings.flySpeed >= kMinimumFlySpeed
            && settings.flySpeed <= kMaximumFlySpeed
+           && settings.movementSpeedToggleKey <= kMaximumVirtualKey
+           && settings.movementSpeed >= kMinimumMovementSpeed
+           && settings.movementSpeed <= kMaximumMovementSpeed
            && std::isfinite(settings.jumpHeightMultiplier)
            && settings.jumpHeightMultiplier >= kMinimumJumpHeightMultiplier
            && settings.jumpHeightMultiplier <= kMaximumJumpHeightMultiplier;
@@ -163,6 +166,18 @@ void parse(std::string_view text, Settings& output) noexcept {
         output.flySpeed =
             std::clamp(std::strtof(buffer.data(), nullptr), kMinimumFlySpeed, kMaximumFlySpeed);
     }
+    if (scalar_for(text, "\"movement_speed_enabled\"", scalar)) {
+        output.movementSpeedEnabled = scalar.starts_with("true");
+    }
+    if (scalar_for(text, "\"movement_speed_toggle_key\"", scalar) && terminated(scalar, buffer)) {
+        output.movementSpeedToggleKey =
+            static_cast<std::uint32_t>(std::strtoul(buffer.data(), nullptr, 0));
+    }
+    if (scalar_for(text, "\"movement_speed\"", scalar) && terminated(scalar, buffer)) {
+        // Clamped for the same reason as the fly speed.
+        output.movementSpeed = std::clamp(
+            std::strtof(buffer.data(), nullptr), kMinimumMovementSpeed, kMaximumMovementSpeed);
+    }
     if (scalar_for(text, "\"jump_height_enabled\"", scalar)) {
         output.jumpHeightEnabled = scalar.starts_with("true");
     }
@@ -195,8 +210,11 @@ void parse(std::string_view text, Settings& output) noexcept {
                                    "  \"fly_enabled\": %s,\n"
                                    "  \"fly_toggle_key\": %u,\n"
                                    "  \"fly_speed\": %.3f,\n"
-                                   "  \"jump_height_enabled\": %s,\n"
-                                   "  \"jump_height_multiplier\": %.3f\n}\n",
+    "  \"movement_speed_enabled\": %s,\n"
+    "  \"movement_speed_toggle_key\": %u,\n"
+                                   "  \"movement_speed\": %.3f,\n"
+    "  \"jump_height_enabled\": %s,\n"
+    "  \"jump_height_multiplier\": %.3f\n}\n",
                                    settings.enabled ? "true" : "false",
                                    static_cast<double>(settings.distance),
                                    static_cast<unsigned>(settings.virtualKey),
@@ -206,6 +224,9 @@ void parse(std::string_view text, Settings& output) noexcept {
                                    settings.flyEnabled ? "true" : "false",
                                    static_cast<unsigned>(settings.flyToggleKey),
                                    static_cast<double>(settings.flySpeed),
+                                   settings.movementSpeedEnabled ? "true" : "false",
+                                   static_cast<unsigned>(settings.movementSpeedToggleKey),
+                                   static_cast<double>(settings.movementSpeed),
                                    settings.jumpHeightEnabled ? "true" : "false",
                                    static_cast<double>(settings.jumpHeightMultiplier));
     if (size <= 0) {

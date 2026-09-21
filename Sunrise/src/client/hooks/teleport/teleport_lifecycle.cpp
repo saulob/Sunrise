@@ -178,6 +178,8 @@ bool install() noexcept {
     if (!resolve_action_keys()) {
         (void)fail("action_keys");
     }
+    // Fly reads the stick on the ticks these hooks carry. Without it fly still flies from the keys.
+    hooks::fly::resolve_controller();
     g_installed.store(true, std::memory_order_release);
     core::log::write(
         core::log::Channel::client, core::log::Level::info, "ev=teleport stage=install result=ok");
@@ -201,6 +203,7 @@ void uninstall() noexcept {
     }
     clear_targets();
     clear_action_keys();
+    hooks::fly::clear_controller();
     hooks::fly::reset();
     client::player::position::reset();
     polled_input::release_key();

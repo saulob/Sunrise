@@ -20,6 +20,13 @@ inline constexpr float kMinimumFlySpeed = 1.0F;
 /** Fastest offered fly speed. Past this the player outruns what the map streams in. */
 inline constexpr float kMaximumFlySpeed = 100.0F;
 
+/** Default multiplier for the initial jump impulse. */
+inline constexpr float kDefaultJumpHeightMultiplier = 1.0F;
+/** Smallest jump height multiplier offered by the interface. */
+inline constexpr float kMinimumJumpHeightMultiplier = 1.0F;
+/** Largest jump height multiplier offered by the interface. */
+inline constexpr float kMaximumJumpHeightMultiplier = 10.0F;
+
 /** Runtime movement configuration. This module owns it; Core settings do not carry it. */
 struct Settings {
     bool enabled{false};
@@ -33,6 +40,8 @@ struct Settings {
     std::uint32_t flyToggleKey{kNoKey};
     /** World units per second while a direction is pressed. */
     float flySpeed{kDefaultFlySpeed};
+    bool jumpHeightEnabled{false};
+    float jumpHeightMultiplier{kDefaultJumpHeightMultiplier};
 };
 
 /**

@@ -24,24 +24,24 @@ Additional features implemented for SunrisePlus
 
 These features are optional and are designed for offline gameplay and exploration
 
-## Upstream Sunrise Features
+## Original Sunrise Features
 
-SunrisePlus includes the functionality provided by the upstream Sunrise project
+SunrisePlus includes the core functionality provided by the original Sunrise project
 
 - Load into any Destination
 - Script Missions
-- Exploration Features such as Fly, Noclip and Activity Override
+- Exploration features including Fly, Noclip and Activity Override
 - Persistent Save
 
-Some upstream gameplay features are still under development, including full progression, multiplayer and additional missions
+Some features from the original Sunrise project are still under development, including full progression, multiplayer and additional missions
 
 ## About SunrisePlus
 
-SunrisePlus is maintained independently from upstream Sunrise
+SunrisePlus is an independent extension of the original Sunrise project
 
-Features developed here are not necessarily part of the official Sunrise roadmap and may remain exclusive to SunrisePlus
+Features developed for SunrisePlus are not necessarily part of the official Sunrise roadmap and may remain exclusive to SunrisePlus
 
-The project will continue to track upstream Sunrise so that improvements and fixes from the original project can be integrated over time
+SunrisePlus will continue to follow the original Sunrise project so that future improvements and fixes can be integrated over time
 
 ## Future Ideas
 

@@ -24,38 +24,37 @@ Additional features implemented for SunrisePlus
 
 These features are optional and are designed for offline gameplay and exploration
 
-## Roadmap
+## Original Sunrise Features
 
-Features currently planned or being researched for SunrisePlus
-
-- [ ] Disable Fall Damage
-- [ ] Instant Summon Vehicle / Sparrow
-- [ ] Campaign / Progression Utilities
-- [ ] Ability Recharge / No Cooldown
-- [ ] Damage Modifier
-- [ ] Cinematics Library
-- [ ] Instant Super
-
-The roadmap may change as features are researched and tested
-
-## Upstream Sunrise Features
-
-SunrisePlus includes the functionality provided by the upstream Sunrise project
+SunrisePlus includes the core functionality provided by the original Sunrise project
 
 - Load into any Destination
 - Script Missions
-- Exploration Features such as Fly, Noclip and Activity Override
+- Exploration features including Fly, Noclip and Activity Override
 - Persistent Save
 
-Some upstream gameplay features are still under development, including full progression, multiplayer and additional missions
+Some features from the original Sunrise project are still under development, including full progression, multiplayer and additional missions
 
 ## About SunrisePlus
 
-SunrisePlus is maintained independently from upstream Sunrise
+SunrisePlus is an independent extension of the original Sunrise project
 
-Features developed here are not necessarily part of the official Sunrise roadmap and may remain exclusive to SunrisePlus
+Features developed for SunrisePlus are not necessarily part of the official Sunrise roadmap and may remain exclusive to SunrisePlus
 
-The project will continue to track upstream Sunrise so that improvements and fixes from the original project can be integrated over time
+SunrisePlus will continue to follow the original Sunrise project so that future improvements and fixes can be integrated over time
+
+## Future Ideas
+
+Some features being considered or researched for SunrisePlus
+
+- Disable Fall Damage
+- Instant Summon Vehicle / Sparrow
+- Ability Recharge / No Cooldown
+- Damage Modifier
+- Cinematics Library
+- Instant Super
+
+These are ideas rather than commitments and may change as the project evolves
 
 ## WIP
 
@@ -63,7 +62,7 @@ SunrisePlus and Sunrise are works in progress
 
 Things may break or work in unexpected ways while features are being developed and tested
 
-## Upstream Project
+## Original Project
 
 SunrisePlus would not exist without the work of the original Sunrise developers and contributors
 

@@ -441,6 +441,16 @@ bool owns_local_player(void* component) noexcept {
            && owns_player(static_cast<std::byte*>(component));
 }
 
+/** Writes the object handle the local player controls. */
+bool controlled_handle(std::uint32_t& handle) noexcept {
+    handle = kInvalidHandle;
+    if (g_controlledHandle == nullptr) {
+        return false;
+    }
+    g_controlledHandle(&handle);
+    return handle != kInvalidHandle;
+}
+
 /** Reads the world position of the body a physics component drives. */
 bool read_position(void* component, Vector& position) noexcept {
     if (component == nullptr) {

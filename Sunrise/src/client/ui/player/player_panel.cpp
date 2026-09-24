@@ -38,6 +38,17 @@ void draw() noexcept {
     changed = toggle::control("Enabled##grenade_no_cooldown", settings.grenadeNoCooldownEnabled)
               || changed;
 
+    ImGui::Spacing();
+    ImGui::Spacing();
+    ImGui::Spacing();
+    ImGui::Spacing();
+    ImGui::TextUnformatted("Melee No Cooldown");
+    ImGui::Separator();
+    ImGui::TextWrapped("Keep charged melee ability energy full.");
+    ImGui::Spacing();
+    changed = toggle::control("Enabled##melee_no_cooldown", settings.meleeNoCooldownEnabled)
+              || changed;
+
     if (changed) {
         (void)client::player::publish(settings);
     }

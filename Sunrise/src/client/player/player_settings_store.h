@@ -7,6 +7,8 @@ struct Settings {
     bool infiniteAmmoEnabled{false};
     /** Holds every activity inactivity timeout at its longest. */
     bool antiAfkEnabled{false};
+    /** Keeps grenade ability energy full through the game's own energy adjustment. */
+    bool grenadeNoCooldownEnabled{false};
 };
 
 /**

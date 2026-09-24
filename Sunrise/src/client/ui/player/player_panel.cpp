@@ -29,6 +29,15 @@ void draw() noexcept {
     ImGui::Spacing();
     changed = toggle::control("Enabled##anti_afk", settings.antiAfkEnabled) || changed;
 
+    ImGui::Spacing();
+    ImGui::Spacing();
+    ImGui::TextUnformatted("Grenade No Cooldown");
+    ImGui::Separator();
+    ImGui::TextWrapped("Keep grenade ability energy full.");
+    ImGui::Spacing();
+    changed = toggle::control("Enabled##grenade_no_cooldown", settings.grenadeNoCooldownEnabled)
+              || changed;
+
     if (changed) {
         (void)client::player::publish(settings);
     }

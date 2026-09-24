@@ -22,6 +22,7 @@
 #include "../hooks/config_getter/config_getter_lifecycle.h"
 #include "../hooks/cursor/runtime.h"
 #include "../hooks/graphics/graphics_hook_lifecycle.h"
+#include "../hooks/grenade_no_cooldown/grenade_no_cooldown.h"
 #include "../hooks/hitch_probe/hitch_probe.h"
 #include "../hooks/inactivity/inactivity_override.h"
 #include "../hooks/infinite_ammo/infinite_ammo.h"
@@ -191,6 +192,8 @@ void clear_game_targets() noexcept {
     (void)hooks::noclip::install();
     // Attaches whether or not the feature is on, so the interface can enable it without a restart.
     (void)hooks::infinite_ammo::install();
+    // Attaches whether or not the feature is on; the getter observer only records an owner.
+    (void)hooks::grenade_no_cooldown::install();
     // Resolves the activity config getter here; the hold itself runs on the frame tick.
     (void)hooks::inactivity::install();
     // Read-only. While the prologue-filler boot task runs, it logs once per second which

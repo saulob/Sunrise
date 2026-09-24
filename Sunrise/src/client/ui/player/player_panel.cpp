@@ -31,22 +31,16 @@ void draw() noexcept {
 
     ImGui::Spacing();
     ImGui::Spacing();
-    ImGui::TextUnformatted("Grenade No Cooldown");
+    ImGui::TextUnformatted("Abilities");
     ImGui::Separator();
-    ImGui::TextWrapped("Keep grenade ability energy full.");
+    ImGui::TextWrapped("Keep ability energy full after use.");
     ImGui::Spacing();
-    changed = toggle::control("Enabled##grenade_no_cooldown", settings.grenadeNoCooldownEnabled)
+    changed = toggle::control("Grenade##grenade_no_cooldown", settings.grenadeNoCooldownEnabled)
               || changed;
-
-    ImGui::Spacing();
-    ImGui::Spacing();
-    ImGui::Spacing();
-    ImGui::Spacing();
-    ImGui::TextUnformatted("Melee No Cooldown");
-    ImGui::Separator();
-    ImGui::TextWrapped("Keep charged melee ability energy full.");
-    ImGui::Spacing();
-    changed = toggle::control("Enabled##melee_no_cooldown", settings.meleeNoCooldownEnabled)
+    changed = toggle::control("Melee##melee_no_cooldown", settings.meleeNoCooldownEnabled)
+              || changed;
+    changed = toggle::control("Class Ability##class_ability_no_cooldown",
+                              settings.classAbilityNoCooldownEnabled)
               || changed;
 
     if (changed) {

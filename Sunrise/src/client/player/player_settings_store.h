@@ -11,6 +11,8 @@ struct Settings {
     bool grenadeNoCooldownEnabled{false};
     /** Keeps charged melee ability energy full through the game's own energy adjustment. */
     bool meleeNoCooldownEnabled{false};
+    /** Keeps class ability energy full through the game's own energy adjustment. */
+    bool classAbilityNoCooldownEnabled{false};
 };
 
 /**

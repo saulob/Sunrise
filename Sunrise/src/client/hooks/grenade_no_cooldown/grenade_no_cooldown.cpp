@@ -1,5 +1,6 @@
 /**
- * Grenade and Melee No Cooldown use the game's Change Ability Energy path (sandbox action kind 8).
+ * Grenade, Melee and Class Ability No Cooldown use the game's Change Ability Energy path
+ * (sandbox action kind 8).
  *
  * The game's executor for that action (decrypted runtime code around RVA 0xEC4E3F..0xEC50C0):
  * 1. calls the current-ability getter (RVA 0xB9CFA0) with the owner and selected slot;
@@ -8,8 +9,10 @@
  * 3. adjusts the energy with `adjust(&reference, amount, 2, 1.0f)` (RVA 0x186A870; the 1.0f
  *    is the .rdata constant at RVA 0x1BA2B80).
  *
- * This module records owners passed for slots 0 and 2, then maintains each enabled slot with
- * one full unit of energy. A temporary read-only trace observes the known BA2030 state accessor.
+ * This module records, per slot, the owner passed for slots 0, 2 and 7 while the player is in a
+ * world and the copied entry names a component, then maintains each enabled slot with one full
+ * unit of energy. Every owner is dropped when the player leaves the world, and no reference is
+ * kept between frames.
  */
 
 #include "grenade_no_cooldown.h"
@@ -21,7 +24,6 @@
 #include <cstddef>
 #include <cstdint>
 #include <cstring>
-#include <intrin.h>
 #include <string_view>
 
 #include "../../../core/logging/log.h"
@@ -29,6 +31,7 @@
 #include "../../hooking/detour.h"
 #include "../../patterns/image_scan.h"
 #include "../../player/player_settings_store.h"
+#include "../bootflow/bootflow_hook_lifecycle.h"
 
 namespace sunrise::client::hooks::grenade_no_cooldown {
 namespace {
@@ -79,20 +82,16 @@ constexpr std::size_t kMovLoadOperand = 3;
 constexpr std::size_t kMovLoadLength = 7;
 constexpr std::byte kCallOpcode{0xE8};
 
-/** Action kind 8 targets Grenade at slot 0 and Melee at slot 2. */
+/** Action kind 8 targets Grenade at slot 0, Melee at slot 2 and Class Ability at slot 7. */
 constexpr std::int32_t kGrenadeSlot = 0;
 constexpr std::int32_t kMeleeSlot = 2;
+constexpr std::int32_t kClassAbilitySlot = 7;
 /** The executor's mode byte for this adjustment. */
 constexpr std::uint8_t kAdjustMode = 2;
 /** One full unit of energy; the executor compares energy against the same 1.0f constant. */
 constexpr float kFullEnergy = 1.0F;
 /** An owner the getter has not reported for this long is not trusted. */
 constexpr std::uint64_t kOwnerFreshMs = 2000;
-constexpr std::uintptr_t kEnergyReaderRva = 0x186AF20;
-constexpr std::uintptr_t kActiveStateRva = 0xBA2030;
-constexpr std::size_t kActiveStateOffset = 0x640;
-constexpr unsigned kTraceSampleBudget = 200;
-constexpr unsigned kTraceRepeatInterval = 32;
 
 /** Copied ability entry: owner + 0x2E0 + slot * 0x30. */
 constexpr std::size_t kEntrySize = 0x30;
@@ -121,47 +120,50 @@ static_assert(offsetof(ComponentReference, cleared) == 0x20);
 
 using CurrentGetter = void*(__fastcall*)(void*, void*, std::int32_t);
 using EnergyAdjust = void(__fastcall*)(ComponentReference*, float, std::uint8_t, float);
-using EnergyRead = float(__fastcall*)(ComponentReference*);
-using ActiveState = std::uint8_t(__fastcall*)(void*);
 
 hooking::detour::Handle g_handle{};
-hooking::detour::Handle g_stateHandle{};
 EnergyAdjust g_adjust{nullptr};
-EnergyRead g_energyRead{nullptr};
 const float* g_adjustRange{nullptr};
 std::byte* g_tablesSlot{nullptr};
-std::uintptr_t g_mainBase{0};
 
-std::atomic<void*> g_grenadeOwner{nullptr};
-std::atomic<std::uint64_t> g_grenadeOwnerTick{0};
-std::atomic<void*> g_meleeOwner{nullptr};
-std::atomic<std::uint64_t> g_meleeOwnerTick{0};
+/**
+ * One slot's state. Each slot has its own owner, so an observation for one slot can never
+ * replace another's. The getter hook writes the atomics from any thread; the rest is frame-thread
+ * only.
+ */
+struct SlotState {
+    std::int32_t slot;
+    const char* feature;
+    const char* enabledLine;
+    const char* disabledLine;
+    const char* applyDetail;
+    std::atomic<void*> owner{nullptr};
+    std::atomic<std::uint64_t> ownerTick{0};
+    bool wasEnabled{false};
+    bool appliedLogged{false};
+    bool skipLogged{false};
+};
 
-/** Frame thread only. */
-bool g_grenadeWasEnabled{false};
-bool g_grenadeAppliedLogged{false};
-bool g_grenadeSkipLogged{false};
-bool g_meleeWasEnabled{false};
-bool g_meleeAppliedLogged{false};
-bool g_meleeSkipLogged{false};
+std::array<SlotState, 3> g_slots{{
+    {kGrenadeSlot,
+     "grenade_no_cooldown",
+     "DEBUG_SAULO ev=grenade_no_cooldown stage=enabled",
+     "DEBUG_SAULO ev=grenade_no_cooldown stage=disabled",
+     "writer=resolved slot=0 amount=1.0"},
+    {kMeleeSlot,
+     "melee_no_cooldown",
+     "DEBUG_SAULO ev=melee_no_cooldown stage=enabled",
+     "DEBUG_SAULO ev=melee_no_cooldown stage=disabled",
+     "writer=resolved slot=2 amount=1.0"},
+    {kClassAbilitySlot,
+     "class_ability_no_cooldown",
+     "DEBUG_SAULO ev=class_ability_no_cooldown stage=enabled",
+     "DEBUG_SAULO ev=class_ability_no_cooldown stage=disabled",
+     "writer=resolved slot=7 amount=1.0"},
+}};
 
-/** The trace receives only a fresh current-Grenade reference published by poll(). */
-std::atomic<bool> g_traceEnabled{false};
-std::atomic<std::uintptr_t> g_traceInterface{0};
-std::atomic<std::uintptr_t> g_traceComponent{0};
-std::atomic<float> g_traceEnergy{0.0F};
-std::atomic<bool> g_traceEnergyAvailable{false};
-std::atomic<bool> g_traceExhausted{false};
-std::atomic_flag g_traceGuard = ATOMIC_FLAG_INIT;
-bool g_traceBegun{false};
-bool g_traceHaveLast{false};
-bool g_traceLastStateAvailable{false};
-std::uint8_t g_traceLastState{0};
-std::uint8_t g_traceLastReturn{0};
-std::uintptr_t g_traceLastCaller{0};
-unsigned g_traceMatchingCalls{0};
-unsigned g_traceSamples{0};
-unsigned g_traceChanges{0};
+/** Frame thread only: the world state seen by the previous poll. */
+bool g_wasInWorld{false};
 
 template <typename T> [[nodiscard]] bool read_at(std::uintptr_t address, T& value) noexcept {
     if (address == 0) {
@@ -269,182 +271,120 @@ template <typename T> [[nodiscard]] bool read_at(std::uintptr_t address, T& valu
            && readable(reference.component, sizeof(std::uintptr_t));
 }
 
-void log_once(bool& flag,
-               const char* feature,
-               const char* stage,
-               const char* detail) noexcept {
-    if (flag) {
+/** Logs one skip reason once per enable or world session, with its slot. Frame thread only. */
+void log_skip(SlotState& state, const char* reason) noexcept {
+    if (state.skipLogged) {
         return;
     }
-    flag = true;
+    state.skipLogged = true;
     core::log::writef(core::log::Channel::client,
                       core::log::Level::info,
-                      "DEBUG_SAULO ev=%s stage=%s %s",
-                      feature,
-                      stage,
-                      detail);
+                      "DEBUG_SAULO ev=%s stage=skip reason=%s slot=%d",
+                      state.feature,
+                      reason,
+                      static_cast<int>(state.slot));
 }
 
-/** Passes calls through and records owners for the two supported current-ability slots. */
+/** Logs one option's enable/disable transition and re-arms its one-shot logs. */
+void log_transition(SlotState& state, bool enabled) noexcept {
+    if (enabled == state.wasEnabled) {
+        return;
+    }
+    state.wasEnabled = enabled;
+    state.appliedLogged = false;
+    state.skipLogged = false;
+    core::log::write(core::log::Channel::client,
+                     core::log::Level::info,
+                     enabled ? state.enabledLine : state.disabledLine);
+}
+
+/** @return The state for a supported slot, or null for any other slot. */
+[[nodiscard]] SlotState* state_for(std::int32_t slot) noexcept {
+    for (SlotState& state : g_slots) {
+        if (state.slot == slot) {
+            return &state;
+        }
+    }
+    return nullptr;
+}
+
+/**
+ * Passes every call through. Records the owner for its own slot only, and only while the player
+ * is in a world and the copied entry names a component (the executor itself skips a slot whose
+ * component handle is -1).
+ */
 void* __fastcall current_getter(void* owner, void* output, std::int32_t slot) noexcept {
     const auto next = reinterpret_cast<CurrentGetter>(g_handle.original);
     void* const result = next != nullptr ? next(owner, output, slot) : output;
-    const std::uint64_t now = GetTickCount64();
-    if (owner != nullptr && slot == kGrenadeSlot) {
-        g_grenadeOwner.store(owner, std::memory_order_release);
-        g_grenadeOwnerTick.store(now, std::memory_order_release);
-    } else if (owner != nullptr && slot == kMeleeSlot) {
-        g_meleeOwner.store(owner, std::memory_order_release);
-        g_meleeOwnerTick.store(now, std::memory_order_release);
+    SlotState* const state = state_for(slot);
+    if (state == nullptr || owner == nullptr || output == nullptr || !bootflow::in_world()) {
+        return result;
     }
+    std::uint32_t componentHandle = kNoHandle;
+    std::memcpy(&componentHandle,
+                static_cast<const std::byte*>(output) + kEntryComponentHandle,
+                sizeof componentHandle);
+    if (componentHandle == kNoHandle) {
+        return result;
+    }
+    state->owner.store(owner, std::memory_order_release);
+    state->ownerTick.store(GetTickCount64(), std::memory_order_release);
     return result;
 }
 
-void clear_trace_reference() noexcept {
-    while (g_traceGuard.test_and_set(std::memory_order_acquire)) {
+/**
+ * Drops every recorded owner and re-arms the one-shot logs, so nothing observed in the world or
+ * character being left can reach the writer. Frame thread only.
+ */
+void reset_runtime_state(const char* reason) noexcept {
+    for (SlotState& state : g_slots) {
+        state.owner.store(nullptr, std::memory_order_release);
+        state.ownerTick.store(0, std::memory_order_release);
+        state.appliedLogged = false;
+        state.skipLogged = false;
     }
-    g_traceEnabled.store(false, std::memory_order_release);
-    g_traceInterface.store(0, std::memory_order_release);
-    g_traceComponent.store(0, std::memory_order_release);
-    g_traceEnergyAvailable.store(false, std::memory_order_release);
-    g_traceGuard.clear(std::memory_order_release);
+    core::log::writef(core::log::Channel::client,
+                      core::log::Level::info,
+                      "DEBUG_SAULO ev=ability_owner stage=reset reason=%s",
+                      reason);
 }
 
-void publish_trace_reference(const ComponentReference& reference) noexcept {
-    while (g_traceGuard.test_and_set(std::memory_order_acquire)) {
+/**
+ * Restores one enabled slot with one full unit of energy. The reference is built from this
+ * frame's owner and discarded after the call; nothing resolved is kept.
+ * @return True when the adjustment was made.
+ */
+bool maintain(SlotState& state, bool enabled) noexcept {
+    if (!enabled || g_adjust == nullptr || g_adjustRange == nullptr) {
+        return false;
     }
-    g_traceComponent.store(reference.component, std::memory_order_release);
-    g_traceInterface.store(reference.interfaceObject, std::memory_order_release);
-    g_traceEnabled.store(true, std::memory_order_release);
-    g_traceGuard.clear(std::memory_order_release);
-}
-
-void trace_state_call(void* object, std::uintptr_t caller, std::uint8_t result) noexcept {
-    if (!g_traceEnabled.load(std::memory_order_acquire)
-        || object == nullptr
-        || reinterpret_cast<std::uintptr_t>(object)
-               != g_traceInterface.load(std::memory_order_acquire)
-        || g_traceComponent.load(std::memory_order_acquire) == 0
-        || g_traceExhausted.load(std::memory_order_acquire)) {
-        return;
+    void* const owner = state.owner.load(std::memory_order_acquire);
+    const std::uint64_t seen = state.ownerTick.load(std::memory_order_acquire);
+    if (owner == nullptr || GetTickCount64() - seen > kOwnerFreshMs) {
+        log_skip(state, "no_fresh_owner");
+        return false;
     }
-    if (g_traceGuard.test_and_set(std::memory_order_acquire)) {
-        return;
+    // The getter reads the owner's slot array; a stale owner must not reach it.
+    constexpr std::size_t kSlotArrayEnd = 0x2E0 + 8 * kEntrySize;
+    if (!readable(reinterpret_cast<std::uintptr_t>(owner), kSlotArrayEnd)) {
+        log_skip(state, "owner_unreadable");
+        return false;
     }
-    if (!g_traceEnabled.load(std::memory_order_acquire)
-        || reinterpret_cast<std::uintptr_t>(object)
-               != g_traceInterface.load(std::memory_order_acquire)
-        || g_traceComponent.load(std::memory_order_acquire) == 0
-        || g_traceExhausted.load(std::memory_order_acquire)) {
-        g_traceGuard.clear(std::memory_order_release);
-        return;
+    ComponentReference reference{};
+    if (!build_reference(owner, state.slot, reference)) {
+        log_skip(state, "reference");
+        return false;
     }
-
-    std::uint8_t state = 0;
-    const bool stateAvailable = read_at(reinterpret_cast<std::uintptr_t>(object)
-                                            + kActiveStateOffset,
-                                        state);
-    const std::uint64_t now = GetTickCount64();
-    std::uintptr_t callerRva = 0;
-    if (g_mainBase != 0 && caller >= g_mainBase) {
-        callerRva = caller - g_mainBase;
-    }
-
-    if (!g_traceBegun) {
-        g_traceBegun = true;
+    g_adjust(&reference, kFullEnergy, kAdjustMode, *g_adjustRange);
+    if (!state.appliedLogged) {
+        state.appliedLogged = true;
         core::log::writef(core::log::Channel::client,
                           core::log::Level::info,
-                          "DEBUG_SAULO ev=grenade_recovery_trace stage=begin t=%llu object=0x%llX "
-                          "caller=+0x%llX",
-                          static_cast<unsigned long long>(now),
-                          static_cast<unsigned long long>(reinterpret_cast<std::uintptr_t>(object)),
-                          static_cast<unsigned long long>(callerRva));
+                          "DEBUG_SAULO ev=%s stage=apply %s",
+                          state.feature,
+                          state.applyDetail);
     }
-
-    ++g_traceMatchingCalls;
-    const bool stateChanged = g_traceHaveLast
-                              && (stateAvailable != g_traceLastStateAvailable
-                                  || (stateAvailable && state != g_traceLastState)
-                                  || result != g_traceLastReturn);
-    const bool firstSample = !g_traceHaveLast;
-    const bool periodic = g_traceMatchingCalls % kTraceRepeatInterval == 0;
-    if ((firstSample || stateChanged || periodic)
-        && g_traceSamples < kTraceSampleBudget) {
-        if (stateChanged) {
-            ++g_traceChanges;
-        }
-        const std::uintptr_t objectAddress = reinterpret_cast<std::uintptr_t>(object);
-        const bool energyAvailable = g_traceEnergyAvailable.load(std::memory_order_acquire);
-        const float energy = g_traceEnergy.load(std::memory_order_acquire);
-        if (stateAvailable && energyAvailable) {
-            core::log::writef(core::log::Channel::client,
-                              core::log::Level::info,
-                              "DEBUG_SAULO ev=grenade_recovery_trace stage=sample t=%llu "
-                              "object=0x%llX state640=%u ret=%u caller=+0x%llX energy=%.6f",
-                              static_cast<unsigned long long>(now),
-                              static_cast<unsigned long long>(objectAddress),
-                              static_cast<unsigned>(state),
-                              static_cast<unsigned>(result),
-                              static_cast<unsigned long long>(callerRva),
-                              static_cast<double>(energy));
-        } else if (stateAvailable) {
-            core::log::writef(core::log::Channel::client,
-                              core::log::Level::info,
-                              "DEBUG_SAULO ev=grenade_recovery_trace stage=sample t=%llu "
-                              "object=0x%llX state640=%u ret=%u caller=+0x%llX "
-                              "energy=unavailable",
-                              static_cast<unsigned long long>(now),
-                              static_cast<unsigned long long>(objectAddress),
-                              static_cast<unsigned>(state),
-                              static_cast<unsigned>(result),
-                              static_cast<unsigned long long>(callerRva));
-        } else if (energyAvailable) {
-            core::log::writef(core::log::Channel::client,
-                              core::log::Level::info,
-                              "DEBUG_SAULO ev=grenade_recovery_trace stage=sample t=%llu "
-                              "object=0x%llX state640=unavailable ret=%u caller=+0x%llX "
-                              "energy=%.6f",
-                              static_cast<unsigned long long>(now),
-                              static_cast<unsigned long long>(objectAddress),
-                              static_cast<unsigned>(result),
-                              static_cast<unsigned long long>(callerRva),
-                              static_cast<double>(energy));
-        } else {
-            core::log::writef(core::log::Channel::client,
-                              core::log::Level::info,
-                              "DEBUG_SAULO ev=grenade_recovery_trace stage=sample t=%llu "
-                              "object=0x%llX state640=unavailable ret=%u caller=+0x%llX "
-                              "energy=unavailable",
-                              static_cast<unsigned long long>(now),
-                              static_cast<unsigned long long>(objectAddress),
-                              static_cast<unsigned>(result),
-                              static_cast<unsigned long long>(callerRva));
-        }
-        ++g_traceSamples;
-        g_traceLastStateAvailable = stateAvailable;
-        g_traceLastState = state;
-        g_traceLastReturn = result;
-        g_traceLastCaller = callerRva;
-        g_traceHaveLast = true;
-        if (g_traceSamples == kTraceSampleBudget) {
-            g_traceExhausted.store(true, std::memory_order_release);
-            core::log::writef(core::log::Channel::client,
-                              core::log::Level::info,
-                              "DEBUG_SAULO ev=grenade_recovery_trace stage=end samples=%u changes=%u",
-                              g_traceSamples,
-                              g_traceChanges);
-        }
-    }
-    g_traceGuard.clear(std::memory_order_release);
-}
-
-/** Read-only observer for the proven BA2030 active-state accessor. */
-__declspec(noinline) std::uint8_t __fastcall active_state(void* object) noexcept {
-    const auto caller = reinterpret_cast<std::uintptr_t>(_ReturnAddress());
-    const auto next = reinterpret_cast<ActiveState>(g_stateHandle.original);
-    const std::uint8_t result = next != nullptr ? next(object) : 0;
-    trace_state_call(object, caller, result);
-    return result;
+    return true;
 }
 
 /** @param reason Step that failed. @return False, for a direct return. */
@@ -501,40 +441,10 @@ bool install() noexcept {
     core::log::write(core::log::Channel::client,
                      core::log::Level::info,
                      "ev=grenade_no_cooldown stage=install result=ok");
-
-    // These fixed RVAs are the already-decoded current-build reader and state accessor. The
-    // trace hook is optional and never prevents either energy option from installing.
-    HMODULE const module = GetModuleHandleW(nullptr);
-    if (module != nullptr) {
-        g_mainBase = reinterpret_cast<std::uintptr_t>(module);
-        g_energyRead = reinterpret_cast<EnergyRead>(g_mainBase + kEnergyReaderRva);
-        auto* const stateTarget = reinterpret_cast<std::byte*>(g_mainBase + kActiveStateRva);
-        if (!hooking::detour::install(
-                hooking::detour::Spec{stateTarget, reinterpret_cast<void*>(&active_state)},
-                g_stateHandle)) {
-            g_energyRead = nullptr;
-            core::log::write(core::log::Channel::client,
-                             core::log::Level::warn,
-                             "DEBUG_SAULO ev=grenade_recovery_trace stage=install result=fail");
-        } else {
-            core::log::write(core::log::Channel::client,
-                             core::log::Level::info,
-                             "DEBUG_SAULO ev=grenade_recovery_trace stage=install result=ok");
-        }
-    } else {
-        core::log::write(core::log::Channel::client,
-                         core::log::Level::warn,
-                         "DEBUG_SAULO ev=grenade_recovery_trace stage=install result=fail reason=no_module");
-    }
     return true;
 }
 
 void uninstall() noexcept {
-    clear_trace_reference();
-    if (g_stateHandle.original != nullptr) {
-        (void)hooking::detour::uninstall(g_stateHandle);
-        g_stateHandle = {};
-    }
     if (g_handle.original == nullptr) {
         return;
     }
@@ -543,113 +453,27 @@ void uninstall() noexcept {
 }
 
 void poll() noexcept {
+    const bool inWorld = bootflow::in_world();
+    // Leaving the world (orbit, loading, character select) ends every owner's validity: the next
+    // world or character must be observed afresh before anything is written.
+    if (!inWorld && g_wasInWorld) {
+        reset_runtime_state("left_world");
+    }
+    g_wasInWorld = inWorld;
+
     const client::player::Settings settings = client::player::get();
-    const bool grenadeEnabled = settings.grenadeNoCooldownEnabled;
-    if (grenadeEnabled != g_grenadeWasEnabled) {
-        g_grenadeWasEnabled = grenadeEnabled;
-        g_grenadeAppliedLogged = false;
-        g_grenadeSkipLogged = false;
-        if (grenadeEnabled) {
-            while (g_traceGuard.test_and_set(std::memory_order_acquire)) {
-            }
-            g_traceBegun = false;
-            g_traceHaveLast = false;
-            g_traceLastStateAvailable = false;
-            g_traceLastState = 0;
-            g_traceLastReturn = 0;
-            g_traceLastCaller = 0;
-            g_traceMatchingCalls = 0;
-            g_traceSamples = 0;
-            g_traceChanges = 0;
-            g_traceExhausted.store(false, std::memory_order_release);
-            g_traceGuard.clear(std::memory_order_release);
-        }
-        core::log::write(core::log::Channel::client,
-                         core::log::Level::info,
-                         grenadeEnabled ? "DEBUG_SAULO ev=grenade_no_cooldown stage=enabled"
-                                        : "DEBUG_SAULO ev=grenade_no_cooldown stage=disabled");
+    const std::array<bool, 3> enabled{settings.grenadeNoCooldownEnabled,
+                                      settings.meleeNoCooldownEnabled,
+                                      settings.classAbilityNoCooldownEnabled};
+    for (std::size_t index = 0; index < g_slots.size(); ++index) {
+        log_transition(g_slots[index], enabled[index]);
     }
-
-    const bool meleeEnabled = settings.meleeNoCooldownEnabled;
-    if (meleeEnabled != g_meleeWasEnabled) {
-        g_meleeWasEnabled = meleeEnabled;
-        g_meleeAppliedLogged = false;
-        g_meleeSkipLogged = false;
-        core::log::write(core::log::Channel::client,
-                         core::log::Level::info,
-                         meleeEnabled ? "DEBUG_SAULO ev=melee_no_cooldown stage=enabled"
-                                      : "DEBUG_SAULO ev=melee_no_cooldown stage=disabled");
+    if (!inWorld) {
+        return;
     }
-
-    clear_trace_reference();
-
-    constexpr std::size_t kSlotArrayEnd = 0x2E0 + 8 * kEntrySize;
-    const auto maintain = [&](bool enabled,
-                              std::int32_t slot,
-                              std::atomic<void*>& ownerStorage,
-                              std::atomic<std::uint64_t>& tickStorage,
-                              const char* feature,
-                              bool& appliedLogged,
-                              bool& skipLogged,
-                              ComponentReference* output) noexcept {
-        if (output != nullptr) {
-            *output = {};
-        }
-        if (!enabled || g_adjust == nullptr || g_adjustRange == nullptr) {
-            return false;
-        }
-        void* const owner = ownerStorage.load(std::memory_order_acquire);
-        const std::uint64_t seen = tickStorage.load(std::memory_order_acquire);
-        if (owner == nullptr || GetTickCount64() - seen > kOwnerFreshMs) {
-            log_once(skipLogged, feature, "skip", "reason=no_fresh_owner");
-            return false;
-        }
-        if (!readable(reinterpret_cast<std::uintptr_t>(owner), kSlotArrayEnd)) {
-            log_once(skipLogged, feature, "skip", "reason=owner_unreadable");
-            return false;
-        }
-        ComponentReference reference{};
-        if (!build_reference(owner, slot, reference)) {
-            log_once(skipLogged, feature, "skip", "reason=reference");
-            return false;
-        }
-        if (output != nullptr) {
-            *output = reference;
-            if (slot == kGrenadeSlot && g_energyRead != nullptr) {
-                g_traceEnergy.store(g_energyRead(&reference), std::memory_order_release);
-                g_traceEnergyAvailable.store(true, std::memory_order_release);
-            }
-        }
-        g_adjust(&reference, kFullEnergy, kAdjustMode, *g_adjustRange);
-        log_once(appliedLogged,
-                 feature,
-                 "apply",
-                 slot == kGrenadeSlot ? "writer=resolved slot=0 amount=1.0"
-                                      : "writer=resolved slot=2 amount=1.0");
-        return true;
-    };
-
-    ComponentReference grenadeReference{};
-    const bool grenadeReferenceValid = maintain(grenadeEnabled,
-                                                kGrenadeSlot,
-                                                g_grenadeOwner,
-                                                g_grenadeOwnerTick,
-                                                "grenade_no_cooldown",
-                                                g_grenadeAppliedLogged,
-                                                g_grenadeSkipLogged,
-                                                &grenadeReference);
-    if (grenadeReferenceValid) {
-        publish_trace_reference(grenadeReference);
+    for (std::size_t index = 0; index < g_slots.size(); ++index) {
+        (void)maintain(g_slots[index], enabled[index]);
     }
-
-    (void)maintain(meleeEnabled,
-                   kMeleeSlot,
-                   g_meleeOwner,
-                   g_meleeOwnerTick,
-                   "melee_no_cooldown",
-                   g_meleeAppliedLogged,
-                   g_meleeSkipLogged,
-                   nullptr);
 }
 
 } // namespace sunrise::client::hooks::grenade_no_cooldown

@@ -128,38 +128,18 @@ std::byte* g_tablesSlot{nullptr};
 
 /**
  * One slot's state. Each slot has its own owner, so an observation for one slot can never
- * replace another's. The getter hook writes the atomics from any thread; the rest is frame-thread
- * only.
+ * replace another's. The getter hook writes the atomics from any thread.
  */
 struct SlotState {
     std::int32_t slot;
-    const char* feature;
-    const char* enabledLine;
-    const char* disabledLine;
-    const char* applyDetail;
     std::atomic<void*> owner{nullptr};
     std::atomic<std::uint64_t> ownerTick{0};
-    bool wasEnabled{false};
-    bool appliedLogged{false};
-    bool skipLogged{false};
 };
 
 std::array<SlotState, 3> g_slots{{
-    {kGrenadeSlot,
-     "grenade_no_cooldown",
-     "DEBUG_SAULO ev=grenade_no_cooldown stage=enabled",
-     "DEBUG_SAULO ev=grenade_no_cooldown stage=disabled",
-     "writer=resolved slot=0 amount=1.0"},
-    {kMeleeSlot,
-     "melee_no_cooldown",
-     "DEBUG_SAULO ev=melee_no_cooldown stage=enabled",
-     "DEBUG_SAULO ev=melee_no_cooldown stage=disabled",
-     "writer=resolved slot=2 amount=1.0"},
-    {kClassAbilitySlot,
-     "class_ability_no_cooldown",
-     "DEBUG_SAULO ev=class_ability_no_cooldown stage=enabled",
-     "DEBUG_SAULO ev=class_ability_no_cooldown stage=disabled",
-     "writer=resolved slot=7 amount=1.0"},
+    {kGrenadeSlot},
+    {kMeleeSlot},
+    {kClassAbilitySlot},
 }};
 
 /** Frame thread only: the world state seen by the previous poll. */
@@ -271,33 +251,6 @@ template <typename T> [[nodiscard]] bool read_at(std::uintptr_t address, T& valu
            && readable(reference.component, sizeof(std::uintptr_t));
 }
 
-/** Logs one skip reason once per enable or world session, with its slot. Frame thread only. */
-void log_skip(SlotState& state, const char* reason) noexcept {
-    if (state.skipLogged) {
-        return;
-    }
-    state.skipLogged = true;
-    core::log::writef(core::log::Channel::client,
-                      core::log::Level::info,
-                      "DEBUG_SAULO ev=%s stage=skip reason=%s slot=%d",
-                      state.feature,
-                      reason,
-                      static_cast<int>(state.slot));
-}
-
-/** Logs one option's enable/disable transition and re-arms its one-shot logs. */
-void log_transition(SlotState& state, bool enabled) noexcept {
-    if (enabled == state.wasEnabled) {
-        return;
-    }
-    state.wasEnabled = enabled;
-    state.appliedLogged = false;
-    state.skipLogged = false;
-    core::log::write(core::log::Channel::client,
-                     core::log::Level::info,
-                     enabled ? state.enabledLine : state.disabledLine);
-}
-
 /** @return The state for a supported slot, or null for any other slot. */
 [[nodiscard]] SlotState* state_for(std::int32_t slot) noexcept {
     for (SlotState& state : g_slots) {
@@ -333,20 +286,14 @@ void* __fastcall current_getter(void* owner, void* output, std::int32_t slot) no
 }
 
 /**
- * Drops every recorded owner and re-arms the one-shot logs, so nothing observed in the world or
- * character being left can reach the writer. Frame thread only.
+ * Drops every recorded owner, so nothing observed in the world or character being left can reach
+ * the writer. Frame thread only.
  */
-void reset_runtime_state(const char* reason) noexcept {
+void reset_runtime_state() noexcept {
     for (SlotState& state : g_slots) {
         state.owner.store(nullptr, std::memory_order_release);
         state.ownerTick.store(0, std::memory_order_release);
-        state.appliedLogged = false;
-        state.skipLogged = false;
     }
-    core::log::writef(core::log::Channel::client,
-                      core::log::Level::info,
-                      "DEBUG_SAULO ev=ability_owner stage=reset reason=%s",
-                      reason);
 }
 
 /**
@@ -361,29 +308,18 @@ bool maintain(SlotState& state, bool enabled) noexcept {
     void* const owner = state.owner.load(std::memory_order_acquire);
     const std::uint64_t seen = state.ownerTick.load(std::memory_order_acquire);
     if (owner == nullptr || GetTickCount64() - seen > kOwnerFreshMs) {
-        log_skip(state, "no_fresh_owner");
         return false;
     }
     // The getter reads the owner's slot array; a stale owner must not reach it.
     constexpr std::size_t kSlotArrayEnd = 0x2E0 + 8 * kEntrySize;
     if (!readable(reinterpret_cast<std::uintptr_t>(owner), kSlotArrayEnd)) {
-        log_skip(state, "owner_unreadable");
         return false;
     }
     ComponentReference reference{};
     if (!build_reference(owner, state.slot, reference)) {
-        log_skip(state, "reference");
         return false;
     }
     g_adjust(&reference, kFullEnergy, kAdjustMode, *g_adjustRange);
-    if (!state.appliedLogged) {
-        state.appliedLogged = true;
-        core::log::writef(core::log::Channel::client,
-                          core::log::Level::info,
-                          "DEBUG_SAULO ev=%s stage=apply %s",
-                          state.feature,
-                          state.applyDetail);
-    }
     return true;
 }
 
@@ -457,20 +393,17 @@ void poll() noexcept {
     // Leaving the world (orbit, loading, character select) ends every owner's validity: the next
     // world or character must be observed afresh before anything is written.
     if (!inWorld && g_wasInWorld) {
-        reset_runtime_state("left_world");
+        reset_runtime_state();
     }
     g_wasInWorld = inWorld;
+    if (!inWorld) {
+        return;
+    }
 
     const client::player::Settings settings = client::player::get();
     const std::array<bool, 3> enabled{settings.grenadeNoCooldownEnabled,
                                       settings.meleeNoCooldownEnabled,
                                       settings.classAbilityNoCooldownEnabled};
-    for (std::size_t index = 0; index < g_slots.size(); ++index) {
-        log_transition(g_slots[index], enabled[index]);
-    }
-    if (!inWorld) {
-        return;
-    }
     for (std::size_t index = 0; index < g_slots.size(); ++index) {
         (void)maintain(g_slots[index], enabled[index]);
     }

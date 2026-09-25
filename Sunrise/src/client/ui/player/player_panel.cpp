@@ -33,7 +33,7 @@ void draw() noexcept {
     ImGui::Spacing();
     ImGui::TextUnformatted("Abilities");
     ImGui::Separator();
-    ImGui::TextWrapped("Keep ability energy full after use.");
+    ImGui::TextWrapped("Remove ability cooldown after use.");
     ImGui::Spacing();
     changed = toggle::control("Grenade##grenade_no_cooldown", settings.grenadeNoCooldownEnabled)
               || changed;

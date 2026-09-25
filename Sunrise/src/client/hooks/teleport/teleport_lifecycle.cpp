@@ -87,7 +87,7 @@ std::int64_t __fastcall camera_transform(std::uint32_t playerIndex) noexcept {
     client::player::position::poll();
     hooks::bootflow::poll_world_step();
     hooks::bootflow::poll_current_slice_set();
-    // Shares this per-frame tick for grenade and charged-melee energy options.
+    // Shares this per-frame tick for the Grenade, Melee and Class Ability energy options.
     hooks::grenade_no_cooldown::poll();
     return result;
 }

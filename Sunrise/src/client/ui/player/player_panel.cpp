@@ -41,6 +41,20 @@ void draw() noexcept {
     ImGui::Spacing();
     changed = toggle::control("Enabled##no_damage", settings.noDamageEnabled) || changed;
 
+    ImGui::Spacing();
+    ImGui::Spacing();
+    ImGui::TextUnformatted("Abilities");
+    ImGui::Separator();
+    ImGui::TextWrapped("Remove ability cooldown after use.");
+    ImGui::Spacing();
+    changed = toggle::control("Grenade##grenade_no_cooldown", settings.grenadeNoCooldownEnabled)
+              || changed;
+    changed = toggle::control("Melee##melee_no_cooldown", settings.meleeNoCooldownEnabled)
+              || changed;
+    changed = toggle::control("Class Ability##class_ability_no_cooldown",
+                              settings.classAbilityNoCooldownEnabled)
+              || changed;
+
     if (changed) {
         (void)client::player::publish(settings);
     }

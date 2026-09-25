@@ -260,6 +260,7 @@
     <ClCompile Include="src\client\memory\current_process_memory.cpp" />
     <ClCompile Include="src\client\hooks\package_trust\package_trust_bypass.cpp" />
     <ClCompile Include="src\client\hooks\feature_flags\feature_flags.cpp" />
+    <ClCompile Include="src\client\hooks\grenade_no_cooldown\grenade_no_cooldown.cpp" />
     <ClCompile Include="src\client\hooks\cine_probe\cine_probe.cpp" />
     <ClCompile Include="src\client\hooks\net_tick_probe\net_tick_probe.cpp" />
     <ClCompile Include="src\client\hooks\external_server\external_server_route.cpp" />
@@ -1825,6 +1826,7 @@
     <ClInclude Include="src\client\hooks\assert_handler\assert_handler_observer.h" />
     <ClInclude Include="src\client\hooks\assert_handler\assert_handler_lifecycle.h" />
     <ClInclude Include="src\client\hooks\feature_flags\feature_flags.h" />
+    <ClInclude Include="src\client\hooks\grenade_no_cooldown\grenade_no_cooldown.h" />
     <ClInclude Include="src\client\hooks\cine_probe\cine_probe.h" />
     <ClInclude Include="src\client\hooks\net_tick_probe\net_tick_probe.h" />
     <ClInclude Include="src\client\hooks\bootflow\internal.h" />

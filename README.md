@@ -29,7 +29,7 @@ Additional features implemented for SunrisePlus
 - [x] Controller Support for Fly Movement
 - [x] No Damage
 - [x] Configurable Movement Speed
-- [x] Ability No Cooldown for Grenade, Melee and Class Ability
+- [x] Ability No Cooldown for Grenade, Super, Melee and Class Ability
 
 These features are optional and are designed for offline gameplay and exploration
 
@@ -58,7 +58,6 @@ Some features being considered or researched for SunrisePlus
 - Instant Summon Vehicle / Sparrow
 - Damage Modifier
 - Cinematics Library
-- Instant Super
 
 These are ideas rather than commitments and may change as the project evolves
 

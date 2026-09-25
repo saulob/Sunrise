@@ -5,6 +5,7 @@
 #include "../content/activity/activity_sdk_generation_worker.h"
 #include "../content/activity/scriptable_catalog_worker.h"
 #include "../content/investment/worker.h"
+#include "../hooks/ability_no_cooldown/ability_no_cooldown.h"
 #include "../hooks/assert_handler/assert_handler_lifecycle.h"
 #include "../hooks/async_io/async_io_lifetime_guard.h"
 #include "../hooks/bootflow/bootflow_hook_lifecycle.h"
@@ -13,7 +14,6 @@
 #include "../hooks/config_getter/config_getter_lifecycle.h"
 #include "../hooks/cursor/runtime.h"
 #include "../hooks/graphics/graphics_hook_lifecycle.h"
-#include "../hooks/grenade_no_cooldown/grenade_no_cooldown.h"
 #include "../hooks/hitch_probe/hitch_probe.h"
 #include "../hooks/inactivity/inactivity_override.h"
 #include "../hooks/infinite_ammo/infinite_ammo.h"
@@ -115,7 +115,7 @@ bool shutdown() noexcept {
     hooks::bootflow::uninstall();
     hooks::infinite_ammo::uninstall();
     hooks::no_damage::uninstall();
-    hooks::grenade_no_cooldown::uninstall();
+    hooks::ability_no_cooldown::uninstall();
     hooks::inactivity::uninstall();
     hooks::noclip::uninstall();
     hooks::teleport::uninstall();

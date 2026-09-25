@@ -14,9 +14,9 @@
 #include "../../../core/logging/log.h"
 #include "../../hooking/detour.h"
 #include "../../player/player_position.h"
+#include "../ability_no_cooldown/ability_no_cooldown.h"
 #include "../bootflow/bootflow_hook_lifecycle.h"
 #include "../fly/fly.h"
-#include "../grenade_no_cooldown/grenade_no_cooldown.h"
 #include "../polled_input/runtime.h"
 #include "../sword_skate/sword_skate.h"
 #include "internal.h"
@@ -87,8 +87,8 @@ std::int64_t __fastcall camera_transform(std::uint32_t playerIndex) noexcept {
     client::player::position::poll();
     hooks::bootflow::poll_world_step();
     hooks::bootflow::poll_current_slice_set();
-    // Shares this per-frame tick for the Grenade, Melee and Class Ability energy options.
-    hooks::grenade_no_cooldown::poll();
+    // Shares this per-frame tick for the ability energy options.
+    hooks::ability_no_cooldown::poll();
     return result;
 }
 

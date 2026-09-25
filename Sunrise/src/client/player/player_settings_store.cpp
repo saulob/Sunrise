@@ -21,7 +21,7 @@ namespace {
 /** The module-owned configuration file, beside the generated settings and logs. */
 constexpr std::wstring_view kFileSuffix = L"\\player.json";
 /** The document is a few scalars, so one small buffer covers both reading and writing. */
-constexpr std::size_t kFileCapacity = 256;
+constexpr std::size_t kFileCapacity = 512;
 
 SRWLOCK g_lock{SRWLOCK_INIT};
 Settings g_settings{};
@@ -70,7 +70,9 @@ void boolean_for(std::string_view text, std::string_view key, bool& output) noex
  */
 void parse(std::string_view text, Settings& output) noexcept {
     boolean_for(text, "\"infinite_ammo_enabled\"", output.infiniteAmmoEnabled);
+    boolean_for(text, "\"infinite_magazine_enabled\"", output.infiniteMagazineEnabled);
     boolean_for(text, "\"anti_afk_enabled\"", output.antiAfkEnabled);
+    boolean_for(text, "\"no_damage_enabled\"", output.noDamageEnabled);
     boolean_for(text, "\"grenade_no_cooldown_enabled\"", output.grenadeNoCooldownEnabled);
     boolean_for(text, "\"melee_no_cooldown_enabled\"", output.meleeNoCooldownEnabled);
     boolean_for(
@@ -91,12 +93,16 @@ void parse(std::string_view text, Settings& output) noexcept {
     const int size = std::snprintf(document.data(),
                                    document.size(),
                                    "{\n  \"infinite_ammo_enabled\": %s,\n"
+                                   "  \"infinite_magazine_enabled\": %s,\n"
                                    "  \"anti_afk_enabled\": %s,\n"
+                                   "  \"no_damage_enabled\": %s,\n"
                                    "  \"grenade_no_cooldown_enabled\": %s,\n"
                                    "  \"melee_no_cooldown_enabled\": %s,\n"
                                    "  \"class_ability_no_cooldown_enabled\": %s\n}\n",
                                    settings.infiniteAmmoEnabled ? "true" : "false",
+                                   settings.infiniteMagazineEnabled ? "true" : "false",
                                    settings.antiAfkEnabled ? "true" : "false",
+                                   settings.noDamageEnabled ? "true" : "false",
                                    settings.grenadeNoCooldownEnabled ? "true" : "false",
                                    settings.meleeNoCooldownEnabled ? "true" : "false",
                                    settings.classAbilityNoCooldownEnabled ? "true" : "false");

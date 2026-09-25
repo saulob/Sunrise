@@ -18,6 +18,7 @@
 #include "../hooks/inactivity/inactivity_override.h"
 #include "../hooks/infinite_ammo/infinite_ammo.h"
 #include "../hooks/network/runtime.h"
+#include "../hooks/no_damage/no_damage.h"
 #include "../hooks/noclip/runtime.h"
 #include "../hooks/package_trust/package_trust_bypass.h"
 #include "../hooks/polled_input/runtime.h"
@@ -113,6 +114,7 @@ bool shutdown() noexcept {
     activity::mission_launch::uninstall();
     hooks::bootflow::uninstall();
     hooks::infinite_ammo::uninstall();
+    hooks::no_damage::uninstall();
     hooks::grenade_no_cooldown::uninstall();
     hooks::inactivity::uninstall();
     hooks::noclip::uninstall();

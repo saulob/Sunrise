@@ -1,5 +1,5 @@
 /**
- * Grenade, Melee and Class Ability No Cooldown use the game's Change Ability Energy path
+ * Grenade, Super, Melee and Class Ability No Cooldown use the game's Change Ability Energy path
  * (sandbox action kind 8).
  *
  * The game's executor for that action (decrypted runtime code around RVA 0xEC4E3F..0xEC50C0):
@@ -9,16 +9,17 @@
  * 3. adjusts the energy with `adjust(&reference, amount, 2, 1.0f)` (RVA 0x186A870; the 1.0f
  *    is the .rdata constant at RVA 0x1BA2B80).
  *
- * This module records, per slot, the owner passed for slots 0, 2 and 7 while the player is in a
+ * This module records, per slot, the owner passed for slots 0, 1, 2 and 7 while the player is in a
  * world and the copied entry names a component, then maintains each enabled slot with one full
- * unit of energy. Every owner is dropped when the player leaves the world, and no reference is
- * kept between frames.
+ * unit of energy; Super gets it once after each use ends. Every owner is dropped when the player
+ * leaves the world, and no reference is kept between frames.
  */
 
-#include "grenade_no_cooldown.h"
+#include "ability_no_cooldown.h"
 
 #include <Windows.h>
 
+#include <algorithm>
 #include <array>
 #include <atomic>
 #include <cstddef>
@@ -33,7 +34,7 @@
 #include "../../player/player_settings_store.h"
 #include "../bootflow/bootflow_hook_lifecycle.h"
 
-namespace sunrise::client::hooks::grenade_no_cooldown {
+namespace sunrise::client::hooks::ability_no_cooldown {
 namespace {
 
 using patterns::resolve_relative;
@@ -71,6 +72,8 @@ constexpr std::string_view kAdjustText =
     "22 F3 0F 10 4B 0C 0F 2F C1 76 15 F3 0F 5C C8 0F 28 C6 F3 0F 5C C1 0F 2F C7 73 08 0F 28 F1 EB "
     "03 0F 57 F6 F3 0F 10 1D ? ? ? ? 48 8D 4C 24 30 41 B0 02 0F 28 CE E8 ? ? ? ?";
 constexpr auto kAdjust = signature<signature_length(kAdjustText)>(kAdjustText);
+/** The executor's energy read `call 186AF20` on the same stack reference. */
+constexpr std::size_t kAdjustReadCall = 5;
 constexpr std::size_t kAdjustConstantLoad = 99;
 constexpr std::size_t kAdjustCall = 118;
 
@@ -82,14 +85,20 @@ constexpr std::size_t kMovLoadOperand = 3;
 constexpr std::size_t kMovLoadLength = 7;
 constexpr std::byte kCallOpcode{0xE8};
 
-/** Action kind 8 targets Grenade at slot 0, Melee at slot 2 and Class Ability at slot 7. */
+/** Action kind 8 targets Grenade at slot 0, Super at 1, Melee at 2 and Class Ability at 7. */
 constexpr std::int32_t kGrenadeSlot = 0;
+constexpr std::int32_t kSuperSlot = 1;
 constexpr std::int32_t kMeleeSlot = 2;
 constexpr std::int32_t kClassAbilitySlot = 7;
 /** The executor's mode byte for this adjustment. */
 constexpr std::uint8_t kAdjustMode = 2;
 /** One full unit of energy; the executor compares energy against the same 1.0f constant. */
 constexpr float kFullEnergy = 1.0F;
+/** Super energy at or above this reads as full, and at or below kSuperEmpty as spent. */
+constexpr float kSuperFull = 0.999F;
+constexpr float kSuperEmpty = 0.01F;
+/** A rise this far above the lowest spent value means the Super ended and energy is recharging. */
+constexpr float kSuperRise = 0.00001F;
 /** An owner the getter has not reported for this long is not trusted. */
 constexpr std::uint64_t kOwnerFreshMs = 2000;
 
@@ -120,9 +129,11 @@ static_assert(offsetof(ComponentReference, cleared) == 0x20);
 
 using CurrentGetter = void*(__fastcall*)(void*, void*, std::int32_t);
 using EnergyAdjust = void(__fastcall*)(ComponentReference*, float, std::uint8_t, float);
+using EnergyRead = float(__fastcall*)(ComponentReference*);
 
 hooking::detour::Handle g_handle{};
 EnergyAdjust g_adjust{nullptr};
+EnergyRead g_read{nullptr};
 const float* g_adjustRange{nullptr};
 std::byte* g_tablesSlot{nullptr};
 
@@ -136,14 +147,84 @@ struct SlotState {
     std::atomic<std::uint64_t> ownerTick{0};
 };
 
-std::array<SlotState, 3> g_slots{{
+std::array<SlotState, 4> g_slots{{
     {kGrenadeSlot},
     {kMeleeSlot},
     {kClassAbilitySlot},
+    {kSuperSlot},
 }};
 
 /** Frame thread only: the world state seen by the previous poll. */
 bool g_wasInWorld{false};
+
+/**
+ * Super's use cycle. A roaming Super spends its energy bar as its duration, so Super is refilled
+ * once after a use has ended instead of every frame: ready, used (draining), spent (at empty),
+ * then one refill when the spent energy starts recharging.
+ */
+enum class SuperPhase : std::uint8_t { unknown, ready, used, spent };
+
+/** Frame thread only. */
+struct SuperCycle {
+    SuperPhase phase{SuperPhase::unknown};
+    bool sampled{false};
+    float previous{0.0F};
+    float lowest{0.0F};
+};
+
+SuperCycle g_super{};
+
+/**
+ * Advances Super's use cycle by one frame.
+ * @param energy Current Super energy from the game's own reader.
+ * @return True exactly once per ended use, when the refill is due.
+ */
+[[nodiscard]] bool super_refill_due(float energy) noexcept {
+    SuperCycle& cycle = g_super;
+    const bool sampled = cycle.sampled;
+    const float previous = cycle.previous;
+    cycle.sampled = true;
+    cycle.previous = energy;
+    switch (cycle.phase) {
+    case SuperPhase::unknown:
+        // First sight (enable, new world): full is ready; draining is an active Super; recharging
+        // from a partial bar is a Super at rest, refilled once.
+        if (energy >= kSuperFull) {
+            cycle.phase = SuperPhase::ready;
+        } else if (sampled && energy < previous) {
+            cycle.phase = SuperPhase::used;
+            cycle.lowest = energy;
+        } else if (sampled && energy > previous) {
+            cycle.phase = SuperPhase::ready;
+            return true;
+        }
+        return false;
+    case SuperPhase::ready:
+        if (energy >= kSuperFull) {
+            return false;
+        }
+        cycle.phase = SuperPhase::used;
+        cycle.lowest = energy;
+        [[fallthrough]];
+    case SuperPhase::used:
+        cycle.lowest = std::min(cycle.lowest, energy);
+        if (energy <= kSuperEmpty) {
+            cycle.phase = SuperPhase::spent;
+        }
+        return false;
+    case SuperPhase::spent:
+        if (energy < cycle.lowest) {
+            cycle.lowest = energy;
+            return false;
+        }
+        if (energy <= cycle.lowest + kSuperRise) {
+            return false;
+        }
+        cycle.phase = SuperPhase::ready;
+        return true;
+    }
+    return false;
+}
 
 template <typename T> [[nodiscard]] bool read_at(std::uintptr_t address, T& value) noexcept {
     if (address == 0) {
@@ -294,6 +375,7 @@ void reset_runtime_state() noexcept {
         state.owner.store(nullptr, std::memory_order_release);
         state.ownerTick.store(0, std::memory_order_release);
     }
+    g_super = {};
 }
 
 /**
@@ -303,6 +385,9 @@ void reset_runtime_state() noexcept {
  */
 bool maintain(SlotState& state, bool enabled) noexcept {
     if (!enabled || g_adjust == nullptr || g_adjustRange == nullptr) {
+        if (state.slot == kSuperSlot) {
+            g_super = {};
+        }
         return false;
     }
     void* const owner = state.owner.load(std::memory_order_acquire);
@@ -319,6 +404,10 @@ bool maintain(SlotState& state, bool enabled) noexcept {
     if (!build_reference(owner, state.slot, reference)) {
         return false;
     }
+    // Super is written only once per ended use; the other slots stay topped up every frame.
+    if (state.slot == kSuperSlot && (g_read == nullptr || !super_refill_due(g_read(&reference)))) {
+        return false;
+    }
     g_adjust(&reference, kFullEnergy, kAdjustMode, *g_adjustRange);
     return true;
 }
@@ -327,7 +416,7 @@ bool maintain(SlotState& state, bool enabled) noexcept {
 [[nodiscard]] bool fail(const char* reason) noexcept {
     core::log::writef(core::log::Channel::client,
                       core::log::Level::warn,
-                      "ev=grenade_no_cooldown stage=install result=fail reason=%s",
+                      "ev=ability_no_cooldown stage=install result=fail reason=%s",
                       reason);
     return false;
 }
@@ -338,12 +427,12 @@ bool install() noexcept {
     if (g_handle.original != nullptr) {
         return true;
     }
-    std::byte* const getter = scan_main_image_unique(kGetter, "grenade_no_cooldown_getter");
+    std::byte* const getter = scan_main_image_unique(kGetter, "ability_no_cooldown_getter");
     if (getter == nullptr) {
         return fail("getter");
     }
     std::byte* const referenceSite =
-        scan_main_image_unique(kReference, "grenade_no_cooldown_reference");
+        scan_main_image_unique(kReference, "ability_no_cooldown_reference");
     if (referenceSite == nullptr || referenceSite[kReferenceGetterCall] != kCallOpcode) {
         return fail("reference");
     }
@@ -356,19 +445,23 @@ bool install() noexcept {
     std::byte* const tablesSlot =
         resolve_relative(referenceSite + kReferenceTablesLoad + kMovLoadOperand,
                          referenceSite + kReferenceTablesLoad + kMovLoadLength);
-    std::byte* const adjustSite = scan_main_image_unique(kAdjust, "grenade_no_cooldown_adjust");
-    if (adjustSite == nullptr || adjustSite[kAdjustCall] != kCallOpcode) {
+    std::byte* const adjustSite = scan_main_image_unique(kAdjust, "ability_no_cooldown_adjust");
+    if (adjustSite == nullptr || adjustSite[kAdjustCall] != kCallOpcode
+        || adjustSite[kAdjustReadCall] != kCallOpcode) {
         return fail("adjust");
     }
     std::byte* const adjust = resolve_relative(adjustSite + kAdjustCall + 1,
                                                adjustSite + kAdjustCall + kCallLength);
+    std::byte* const read = resolve_relative(adjustSite + kAdjustReadCall + 1,
+                                             adjustSite + kAdjustReadCall + kCallLength);
     std::byte* const range = resolve_relative(adjustSite + kAdjustConstantLoad + kLoadOperand,
                                               adjustSite + kAdjustConstantLoad + kLoadLength);
-    if (tablesSlot == nullptr || adjust == nullptr || range == nullptr) {
+    if (tablesSlot == nullptr || adjust == nullptr || read == nullptr || range == nullptr) {
         return fail("decode");
     }
     g_tablesSlot = tablesSlot;
     g_adjust = reinterpret_cast<EnergyAdjust>(adjust);
+    g_read = reinterpret_cast<EnergyRead>(read);
     g_adjustRange = reinterpret_cast<const float*>(range);
     if (!hooking::detour::install(
             hooking::detour::Spec{getter, reinterpret_cast<void*>(&current_getter)}, g_handle)) {
@@ -376,7 +469,7 @@ bool install() noexcept {
     }
     core::log::write(core::log::Channel::client,
                      core::log::Level::info,
-                     "ev=grenade_no_cooldown stage=install result=ok");
+                     "ev=ability_no_cooldown stage=install result=ok");
     return true;
 }
 
@@ -401,12 +494,13 @@ void poll() noexcept {
     }
 
     const client::player::Settings settings = client::player::get();
-    const std::array<bool, 3> enabled{settings.grenadeNoCooldownEnabled,
+    const std::array<bool, 4> enabled{settings.grenadeNoCooldownEnabled,
                                       settings.meleeNoCooldownEnabled,
-                                      settings.classAbilityNoCooldownEnabled};
+                                      settings.classAbilityNoCooldownEnabled,
+                                      settings.superNoCooldownEnabled};
     for (std::size_t index = 0; index < g_slots.size(); ++index) {
         (void)maintain(g_slots[index], enabled[index]);
     }
 }
 
-} // namespace sunrise::client::hooks::grenade_no_cooldown
+} // namespace sunrise::client::hooks::ability_no_cooldown

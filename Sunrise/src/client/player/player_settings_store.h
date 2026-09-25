@@ -16,6 +16,8 @@ struct Settings {
     bool meleeNoCooldownEnabled{false};
     /** Keeps class ability energy full through the game's own energy adjustment. */
     bool classAbilityNoCooldownEnabled{false};
+    /** Refills super ability energy after each use ends, through the game's own adjustment. */
+    bool superNoCooldownEnabled{false};
 };
 
 /**

@@ -54,6 +54,8 @@ void draw() noexcept {
     changed = toggle::control("Class Ability##class_ability_no_cooldown",
                               settings.classAbilityNoCooldownEnabled)
               || changed;
+    changed = toggle::control("Super##super_no_cooldown", settings.superNoCooldownEnabled)
+              || changed;
 
     if (changed) {
         (void)client::player::publish(settings);

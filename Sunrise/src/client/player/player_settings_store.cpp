@@ -77,6 +77,7 @@ void parse(std::string_view text, Settings& output) noexcept {
     boolean_for(text, "\"melee_no_cooldown_enabled\"", output.meleeNoCooldownEnabled);
     boolean_for(
         text, "\"class_ability_no_cooldown_enabled\"", output.classAbilityNoCooldownEnabled);
+    boolean_for(text, "\"super_no_cooldown_enabled\"", output.superNoCooldownEnabled);
 }
 
 /**
@@ -98,14 +99,16 @@ void parse(std::string_view text, Settings& output) noexcept {
                                    "  \"no_damage_enabled\": %s,\n"
                                    "  \"grenade_no_cooldown_enabled\": %s,\n"
                                    "  \"melee_no_cooldown_enabled\": %s,\n"
-                                   "  \"class_ability_no_cooldown_enabled\": %s\n}\n",
+                                   "  \"class_ability_no_cooldown_enabled\": %s,\n"
+                                   "  \"super_no_cooldown_enabled\": %s\n}\n",
                                    settings.infiniteAmmoEnabled ? "true" : "false",
                                    settings.infiniteMagazineEnabled ? "true" : "false",
                                    settings.antiAfkEnabled ? "true" : "false",
                                    settings.noDamageEnabled ? "true" : "false",
                                    settings.grenadeNoCooldownEnabled ? "true" : "false",
                                    settings.meleeNoCooldownEnabled ? "true" : "false",
-                                   settings.classAbilityNoCooldownEnabled ? "true" : "false");
+                                   settings.classAbilityNoCooldownEnabled ? "true" : "false",
+                                   settings.superNoCooldownEnabled ? "true" : "false");
     if (size <= 0 || static_cast<std::size_t>(size) >= document.size()) {
         return false;
     }

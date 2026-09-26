@@ -25,11 +25,12 @@ See the [FAQ](https://projectsunrise.dev/faq/) for more information
 Additional features implemented for SunrisePlus
 
 - [x] Infinite Magazine
+- [x] No Damage
 - [x] Configurable Jump Height from 1x to 10x
 - [x] Controller Support for Fly Movement
-- [x] No Damage
 - [x] Configurable Movement Speed
 - [x] Ability No Cooldown for Grenade, Super, Melee and Class Ability
+- [x] Season Progression controls for XP, ranks, Artifact Power Bonus and reset
 
 These features are optional and are designed for offline gameplay and exploration
 
